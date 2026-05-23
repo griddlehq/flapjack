@@ -15,7 +15,7 @@ vector-search = ["flapjack/vector-search", "dep:lru"]
 vector-search-local = ["vector-search", "flapjack/vector-search-local"]
 
 [dependencies]
-flapjack = { path = "..", features = ["analytics", "openapi"] }
+flapjack = { path = "..", default-features = false, features = ["axum-support", "s3-snapshots", "openapi", "analytics", "decompound"] }
 flapjack-replication = { path = "../flapjack-replication" }
 flapjack-ssl = { path = "../flapjack-ssl" }
 
