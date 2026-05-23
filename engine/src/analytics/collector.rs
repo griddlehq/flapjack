@@ -1,0 +1,476 @@
+use dashmap::DashMap;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+use tokio::sync::Notify;
+
+use super::aggregation::QueryAggregator;
+use super::config::AnalyticsConfig;
+use super::schema::{InsightEvent, SearchEvent};
+use super::writer;
+
+/// Maximum number of debug events retained in the ring buffer.
+const DEBUG_BUFFER_CAP: usize = 3000;
+
+/// A debug entry recorded for every event received via POST /1/events,
+/// regardless of whether it passed validation. Used by the event debugger UI.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugEvent {
+    pub timestamp_ms: i64,
+    pub index: String,
+    pub event_type: String,
+    pub event_subtype: Option<String>,
+    pub event_name: String,
+    pub user_token: String,
+    pub object_ids: Vec<String>,
+    pub http_code: u16,
+    pub validation_errors: Vec<String>,
+}
+
+/// Central analytics event collector.
+///
+/// Buffers events in memory and flushes to Parquet files either on a timer
+/// or when the buffer reaches a threshold size. Uses `std::mem::take` to
+/// swap the buffer without holding the lock during I/O.
+pub struct AnalyticsCollector {
+    config: AnalyticsConfig,
+    search_buffer: Mutex<Vec<SearchEvent>>,
+    insight_buffer: Mutex<Vec<InsightEvent>>,
+    debug_buffer: Mutex<VecDeque<DebugEvent>>,
+    aggregator: QueryAggregator,
+    /// queryID -> (query, index_name, timestamp_ms) for correlating clicks with searches
+    query_id_cache: DashMap<String, QueryIdEntry>,
+    shutdown: Notify,
+}
+
+#[derive(Clone)]
+pub struct QueryIdEntry {
+    pub query: String,
+    pub index_name: String,
+    pub timestamp_ms: i64,
+}
+
+impl AnalyticsCollector {
+    pub fn new(config: AnalyticsConfig) -> Arc<Self> {
+        Arc::new(Self {
+            config,
+            search_buffer: Mutex::new(Vec::with_capacity(1024)),
+            insight_buffer: Mutex::new(Vec::with_capacity(256)),
+            debug_buffer: Mutex::new(VecDeque::with_capacity(DEBUG_BUFFER_CAP)),
+            aggregator: QueryAggregator::new(30),
+            query_id_cache: DashMap::new(),
+            shutdown: Notify::new(),
+        })
+    }
+
+    pub fn config(&self) -> &AnalyticsConfig {
+        &self.config
+    }
+
+    /// Record a search event. Called from the search path after results are computed.
+    pub fn record_search(&self, event: SearchEvent) {
+        if !self.config.enabled {
+            return;
+        }
+
+        // Store queryID mapping for click correlation
+        if let Some(ref qid) = event.query_id {
+            self.query_id_cache.insert(
+                qid.clone(),
+                QueryIdEntry {
+                    query: event.query.clone(),
+                    index_name: event.index_name.clone(),
+                    timestamp_ms: event.timestamp_ms,
+                },
+            );
+        }
+
+        // Check aggregation: should this count as a distinct search?
+        let user_id = event
+            .user_token
+            .as_deref()
+            .or(event.user_ip.as_deref())
+            .unwrap_or("anonymous");
+        let _is_new_search = self
+            .aggregator
+            .should_count(user_id, &event.index_name, &event.query);
+        // We always store the raw event; aggregation is applied at query time.
+        // The aggregator is kept for future use (e.g. deduped search count queries).
+
+        let should_flush = {
+            let mut buf = self.search_buffer.lock().unwrap();
+            buf.push(event);
+            buf.len() >= self.config.flush_size
+        };
+
+        if should_flush {
+            self.flush_searches();
+        }
+    }
+
+    /// Record an insight event (click, conversion, view).
+    pub fn record_insight(&self, event: InsightEvent) {
+        if !self.config.enabled {
+            return;
+        }
+
+        let should_flush = {
+            let mut buf = self.insight_buffer.lock().unwrap();
+            buf.push(event);
+            buf.len() >= self.config.flush_size
+        };
+
+        if should_flush {
+            self.flush_insights();
+        }
+    }
+
+    /// Record a debug event entry for the event debugger UI.
+    pub fn record_debug_event(&self, event: DebugEvent) {
+        let mut buf = self.debug_buffer.lock().unwrap();
+        if buf.len() >= DEBUG_BUFFER_CAP {
+            buf.pop_front();
+        }
+        buf.push_back(event);
+    }
+
+    /// Query recent debug events from the ring buffer, applying optional filters.
+    /// Returns events in reverse-chronological order (newest first), capped at `limit`.
+    pub fn get_debug_events(
+        &self,
+        limit: usize,
+        index: Option<&str>,
+        event_type: Option<&str>,
+        status: Option<&str>,
+        from_timestamp_ms: Option<i64>,
+        until_timestamp_ms: Option<i64>,
+    ) -> Vec<DebugEvent> {
+        let buf = self.debug_buffer.lock().unwrap();
+        buf.iter()
+            .rev()
+            .filter(|e| {
+                if let Some(idx) = index {
+                    if e.index != idx {
+                        return false;
+                    }
+                }
+                if let Some(et) = event_type {
+                    if e.event_type != et {
+                        return false;
+                    }
+                }
+                if let Some(st) = status {
+                    match st {
+                        "ok" if e.http_code != 200 => {
+                            return false;
+                        }
+                        "error" if e.http_code == 200 => {
+                            return false;
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(from_ms) = from_timestamp_ms {
+                    if e.timestamp_ms < from_ms {
+                        return false;
+                    }
+                }
+                if let Some(until_ms) = until_timestamp_ms {
+                    if e.timestamp_ms > until_ms {
+                        return false;
+                    }
+                }
+                true
+            })
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
+    /// Look up a queryID to correlate with the original search.
+    pub fn lookup_query_id(&self, query_id: &str) -> Option<QueryIdEntry> {
+        self.query_id_cache.get(query_id).map(|e| e.clone())
+    }
+
+    /// Flush search events to Parquet. Swaps buffer to avoid holding lock during I/O.
+    pub fn flush_searches(&self) {
+        let events = {
+            let mut buf = self.search_buffer.lock().unwrap();
+            std::mem::take(&mut *buf)
+        };
+        if events.is_empty() {
+            return;
+        }
+
+        // Group events by index_name for per-index Parquet files
+        let mut by_index: std::collections::HashMap<String, Vec<SearchEvent>> =
+            std::collections::HashMap::new();
+        for event in events {
+            by_index
+                .entry(event.index_name.clone())
+                .or_default()
+                .push(event);
+        }
+
+        for (index_name, index_events) in by_index {
+            let dir = self.config.searches_dir(&index_name);
+            if let Err(e) = writer::flush_search_events(&index_events, &dir) {
+                tracing::error!(
+                    "[analytics] Failed to flush {} search events for {}: {}",
+                    index_events.len(),
+                    index_name,
+                    e
+                );
+            } else {
+                tracing::debug!(
+                    "[analytics] Flushed {} search events for {}",
+                    index_events.len(),
+                    index_name
+                );
+            }
+        }
+    }
+
+    /// Flush insight events to Parquet.
+    pub fn flush_insights(&self) {
+        let events = {
+            let mut buf = self.insight_buffer.lock().unwrap();
+            std::mem::take(&mut *buf)
+        };
+        if events.is_empty() {
+            return;
+        }
+
+        let mut by_index: std::collections::HashMap<String, Vec<InsightEvent>> =
+            std::collections::HashMap::new();
+        for event in events {
+            by_index.entry(event.index.clone()).or_default().push(event);
+        }
+
+        for (index_name, index_events) in by_index {
+            let dir = self.config.events_dir(&index_name);
+            if let Err(e) = writer::flush_insight_events(&index_events, &dir) {
+                tracing::error!(
+                    "[analytics] Failed to flush {} insight events for {}: {}",
+                    index_events.len(),
+                    index_name,
+                    e
+                );
+            } else {
+                tracing::debug!(
+                    "[analytics] Flushed {} insight events for {}",
+                    index_events.len(),
+                    index_name
+                );
+            }
+        }
+    }
+
+    /// Flush all buffers (called at shutdown or periodically).
+    pub fn flush_all(&self) {
+        self.flush_searches();
+        self.flush_insights();
+    }
+
+    /// Purge all insight events for a user token from memory and on-disk analytics data.
+    /// Returns number of removed events.
+    pub fn purge_user_token(&self, user_token: &str) -> Result<u64, String> {
+        let removed_from_buffer = {
+            let mut buf = self.insight_buffer.lock().unwrap();
+            let before = buf.len();
+            buf.retain(|e| e.user_token != user_token);
+            (before - buf.len()) as u64
+        };
+
+        let mut removed_from_disk = 0_u64;
+        if self.config.data_dir.exists() {
+            let entries = std::fs::read_dir(&self.config.data_dir)
+                .map_err(|e| format!("Failed to read analytics data dir: {}", e))?;
+            for entry in entries {
+                let entry = entry.map_err(|e| format!("Failed to read analytics entry: {}", e))?;
+                let index_dir = entry.path();
+                if !index_dir.is_dir() {
+                    continue;
+                }
+                let events_dir = index_dir.join("events");
+                removed_from_disk +=
+                    writer::purge_insight_events_for_user_token(&events_dir, user_token)?;
+            }
+        }
+
+        Ok(removed_from_buffer + removed_from_disk)
+    }
+
+    /// Start the background flush loop. Should be spawned as a tokio task.
+    pub async fn run_flush_loop(self: Arc<Self>) {
+        let interval = tokio::time::Duration::from_secs(self.config.flush_interval_secs);
+        let mut ticker = tokio::time::interval(interval);
+        ticker.tick().await; // skip the first immediate tick
+
+        loop {
+            tokio::select! {
+                _ = ticker.tick() => {
+                    self.flush_all();
+                    self.aggregator.evict_expired();
+                    self.evict_old_query_ids();
+                }
+                _ = self.shutdown.notified() => {
+                    self.flush_all();
+                    tracing::info!("[analytics] Flush loop shutting down");
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Signal the flush loop to stop.
+    pub fn shutdown(&self) {
+        self.shutdown.notify_one();
+    }
+
+    /// Evict queryID entries older than 1 hour.
+    fn evict_old_query_ids(&self) {
+        let cutoff = chrono::Utc::now().timestamp_millis() - 3_600_000;
+        self.query_id_cache.retain(|_, v| v.timestamp_ms > cutoff);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn test_config(temp_dir: &TempDir) -> AnalyticsConfig {
+        AnalyticsConfig {
+            enabled: true,
+            data_dir: temp_dir.path().to_path_buf(),
+            flush_interval_secs: 60,
+            flush_size: 100,
+            retention_days: 90,
+        }
+    }
+
+    fn test_event(
+        timestamp_ms: i64,
+        index: &str,
+        event_type: &str,
+        event_name: &str,
+        http_code: u16,
+    ) -> DebugEvent {
+        DebugEvent {
+            timestamp_ms,
+            index: index.to_string(),
+            event_type: event_type.to_string(),
+            event_subtype: None,
+            event_name: event_name.to_string(),
+            user_token: "user-1".to_string(),
+            object_ids: vec!["obj-1".to_string()],
+            http_code,
+            validation_errors: if http_code == 200 {
+                vec![]
+            } else {
+                vec!["validation failed".to_string()]
+            },
+        }
+    }
+
+    #[test]
+    fn get_debug_events_filters_by_index() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let collector = AnalyticsCollector::new(test_config(&temp_dir));
+        collector.record_debug_event(test_event(100, "products", "search", "prod-old", 200));
+        collector.record_debug_event(test_event(200, "users", "search", "users", 200));
+        collector.record_debug_event(test_event(300, "products", "click", "prod-new", 200));
+
+        let events = collector.get_debug_events(10, Some("products"), None, None, None, None);
+
+        let names: Vec<String> = events.into_iter().map(|e| e.event_name).collect();
+        assert_eq!(names, vec!["prod-new".to_string(), "prod-old".to_string()]);
+    }
+
+    #[test]
+    fn get_debug_events_filters_by_event_type() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let collector = AnalyticsCollector::new(test_config(&temp_dir));
+        collector.record_debug_event(test_event(100, "products", "search", "search-old", 200));
+        collector.record_debug_event(test_event(200, "products", "click", "click", 200));
+        collector.record_debug_event(test_event(300, "products", "search", "search-new", 200));
+
+        let events = collector.get_debug_events(10, None, Some("search"), None, None, None);
+
+        let names: Vec<String> = events.into_iter().map(|e| e.event_name).collect();
+        assert_eq!(
+            names,
+            vec!["search-new".to_string(), "search-old".to_string()]
+        );
+    }
+
+    #[test]
+    fn get_debug_events_filters_by_status_ok_and_error() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let collector = AnalyticsCollector::new(test_config(&temp_dir));
+        collector.record_debug_event(test_event(100, "products", "search", "ok", 200));
+        collector.record_debug_event(test_event(200, "products", "search", "bad-request", 400));
+        collector.record_debug_event(test_event(300, "products", "search", "server-error", 500));
+
+        let ok_events = collector.get_debug_events(10, None, None, Some("ok"), None, None);
+        let error_events = collector.get_debug_events(10, None, None, Some("error"), None, None);
+
+        let ok_names: Vec<String> = ok_events.into_iter().map(|e| e.event_name).collect();
+        let error_names: Vec<String> = error_events.into_iter().map(|e| e.event_name).collect();
+        assert_eq!(ok_names, vec!["ok".to_string()]);
+        assert_eq!(
+            error_names,
+            vec!["server-error".to_string(), "bad-request".to_string()]
+        );
+    }
+
+    #[test]
+    fn get_debug_events_filters_by_timestamp_window() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let collector = AnalyticsCollector::new(test_config(&temp_dir));
+        collector.record_debug_event(test_event(100, "products", "search", "old", 200));
+        collector.record_debug_event(test_event(200, "products", "search", "inside", 200));
+        collector.record_debug_event(test_event(300, "products", "search", "new", 200));
+
+        let events = collector.get_debug_events(10, None, None, None, Some(150), Some(250));
+
+        let names: Vec<String> = events.into_iter().map(|e| e.event_name).collect();
+        assert_eq!(names, vec!["inside".to_string()]);
+    }
+
+    #[test]
+    fn get_debug_events_applies_limit_after_filtering() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let collector = AnalyticsCollector::new(test_config(&temp_dir));
+        collector.record_debug_event(test_event(100, "products", "search", "one", 200));
+        collector.record_debug_event(test_event(200, "products", "search", "two", 200));
+        collector.record_debug_event(test_event(300, "products", "search", "three", 200));
+
+        let events = collector.get_debug_events(2, Some("products"), None, None, None, None);
+
+        let names: Vec<String> = events.into_iter().map(|e| e.event_name).collect();
+        assert_eq!(names, vec!["three".to_string(), "two".to_string()]);
+    }
+
+    #[test]
+    fn get_debug_events_returns_reverse_chronological_order() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let collector = AnalyticsCollector::new(test_config(&temp_dir));
+        collector.record_debug_event(test_event(100, "products", "search", "first", 200));
+        collector.record_debug_event(test_event(200, "products", "search", "second", 200));
+        collector.record_debug_event(test_event(300, "products", "search", "third", 200));
+
+        let events = collector.get_debug_events(10, None, None, None, None, None);
+
+        let names: Vec<String> = events.into_iter().map(|e| e.event_name).collect();
+        assert_eq!(
+            names,
+            vec![
+                "third".to_string(),
+                "second".to_string(),
+                "first".to_string()
+            ]
+        );
+    }
+}

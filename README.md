@@ -1,2 +1,363 @@
-# flapjack
-Drop-in replacement for Algolia: typo-tolerant full-text search with faceting, geo search, and custom ranking.
+# 🥞 Flapjack
+
+**→ [Project Roadmap](ROADMAP.md)**
+
+
+[![CI](https://github.com/griddlehq/flapjack/actions/workflows/ci.yml/badge.svg)](https://github.com/griddlehq/flapjack/actions/workflows/ci.yml)
+[![Release](https://github.com/griddlehq/flapjack/actions/workflows/release.yml/badge.svg)](https://github.com/griddlehq/flapjack/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Drop-in replacement for [Algolia](https://algolia.com) — works with [InstantSearch.js](https://github.com/algolia/instantsearch) and the [algoliasearch](https://github.com/algolia/algoliasearch-client-javascript) client. Typo-tolerant full-text search with faceting, geo search, and custom ranking. Single static binary, runs anywhere, data stays on disk.
+
+**[Live Demo](https://flapjack-demo.pages.dev)** · **[Geo Demo](https://flapjack-demo.pages.dev/geo)** · **[API Docs](https://flapjack-demo.pages.dev/api-docs)**
+
+Hosted version: [Flapjack Cloud](https://cloud.flapjack.foo).
+
+---
+
+## Quickstart
+
+```bash
+curl -fsSL https://install.flapjack.foo | sh    # install
+flapjack                                        # run the server
+```
+
+On first boot Flapjack generates an admin API key and saves it to `data/.admin_key`.
+Use that key in the `X-Algolia-API-Key` header for all API requests.
+
+Open the dashboard at **http://localhost:7700/dashboard** or use the API directly:
+
+```bash
+# Public status + docs routes
+curl -s http://localhost:7700/health | jq '.status'
+curl -i http://localhost:7700/health/ready
+#   empty or healthy: HTTP 200 {"ready":true}
+#   data dir unreadable or tenant search fails: HTTP 503 {"message":"Service unavailable","status":503}
+curl -s http://localhost:7700/api-docs/openapi.json | jq '.openapi'
+# Browser routes
+#   http://localhost:7700/dashboard
+#   http://localhost:7700/swagger-ui
+```
+
+```bash
+API_KEY="$(cat ./data/.admin_key)"   # default data dir; use your custom --data-dir if needed
+
+# Add documents
+curl -s -X POST http://localhost:7700/1/indexes/movies/batch \
+  -H "X-Algolia-API-Key: $API_KEY" \
+  -H "X-Algolia-Application-Id: flapjack" \
+  -H "Content-Type: application/json" \
+  -d '{"requests":[
+    {"action":"addObject","body":{"objectID":"1","title":"The Matrix","year":1999}},
+    {"action":"addObject","body":{"objectID":"2","title":"Inception","year":2010}}
+  ]}'
+
+# Copy the returned taskID before polling:
+TASK_ID=<paste-taskID-from-response>
+
+# Wait for the write task to finish indexing
+until [ "$(curl -s http://localhost:7700/1/tasks/$TASK_ID \
+  -H "X-Algolia-API-Key: $API_KEY" \
+  -H "X-Algolia-Application-Id: flapjack" | jq -r '.status')" = "published" ]; do
+  sleep 0.1
+done
+
+# Search (typo-tolerant — "matrxi" finds "The Matrix")
+curl -X POST http://localhost:7700/1/indexes/movies/query \
+  -H "X-Algolia-API-Key: $API_KEY" \
+  -H "X-Algolia-Application-Id: flapjack" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"matrxi"}'
+```
+
+These are the same Algolia-compatible `/1/` endpoints your frontend SDK will use — no separate "toy" API.
+
+To rotate the admin key for an existing data directory:
+
+```bash
+flapjack --data-dir ./data reset-admin-key
+```
+
+<details>
+<summary>Note:</summary>
+
+Binaries: [Releases](https://github.com/griddlehq/flapjack/releases/latest).
+
+```bash
+# Install specific version
+curl -fsSL https://install.flapjack.foo | sh -s -- v0.2.0
+
+# Custom install directory
+FLAPJACK_INSTALL=/opt/flapjack curl -fsSL https://install.flapjack.foo | sh
+
+# Skip PATH modification
+NO_MODIFY_PATH=1 curl -fsSL https://install.flapjack.foo | sh
+```
+
+</details>
+
+---
+
+## Running Multiple Instances
+
+Use `--instance <name>` to run isolated instances with separate data directories and ports. See [`engine/README.md`](engine/README.md#multi-instance-development) for full multi-instance setup instructions.
+
+---
+
+## Migrate from Algolia
+
+```bash
+flapjack
+
+curl -X POST http://localhost:7700/1/migrate-from-algolia \
+  -H "X-Algolia-API-Key: $API_KEY" \
+  -H "X-Algolia-Application-Id: flapjack" \
+  -H "Content-Type: application/json" \
+  -d '{"appId":"YOUR_ALGOLIA_APP_ID","apiKey":"YOUR_ALGOLIA_ADMIN_KEY","sourceIndex":"products"}'
+```
+
+Search:
+
+```bash
+curl -X POST http://localhost:7700/1/indexes/products/query \
+  -H "X-Algolia-API-Key: $API_KEY" \
+  -H "X-Algolia-Application-Id: flapjack" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"widget"}'
+```
+
+Then point your frontend at Flapjack instead of Algolia:
+
+```javascript
+import algoliasearch from 'algoliasearch';
+
+// app-id can be any string, api-key is your FLAPJACK_ADMIN_KEY or a search key
+const client = algoliasearch('my-app', 'your-flapjack-api-key');
+client.transporter.hosts = [{ url: 'localhost:7700', protocol: 'http' }];
+
+// Everything else stays the same
+```
+
+InstantSearch.js widgets work as-is — `SearchBox`, `Hits`, `RefinementList`, `Pagination`, `GeoSearch`, etc.
+
+---
+
+## Features
+
+| Feature | Details |
+|---------|---------|
+| Full-text search | Prefix matching, typo tolerance (Levenshtein ≤1/≤2) |
+| Filters | Numeric, string, boolean, date — `AND`/`OR`/`NOT` |
+| Faceting | Hierarchical, searchable, `filterOnly`, wildcard `*` |
+| Geo search | `aroundLatLng`, `insideBoundingBox`, `insidePolygon`, auto-radius |
+| Highlighting | Typo-aware, supports nested objects and arrays |
+| Custom ranking | Multi-field, `asc`/`desc` |
+| Synonyms | One-way, multi-way, alternative corrections |
+| Query rules | Conditions + consequences: pin, hide, boost, redirect, userData |
+| Pagination | `page`/`hitsPerPage` and `offset`/`length` |
+| Distinct | Deduplication by attribute |
+| Stop words & plurals | Per-language, 30 languages |
+| Batch operations | Add, update, delete, clear, browse |
+| API keys | ACL, index patterns, TTL, secured keys (HMAC) |
+| S3 backup/restore | Scheduled snapshots, auto-restore on startup |
+| Vector / semantic search | OpenAI, REST, FastEmbed, user-provided embedders, HNSW (macOS binaries, Docker, and source builds; pre-built Linux musl/Windows binaries require source build or Docker for vector support) |
+| Hybrid search | Keyword + vector with Reciprocal Rank Fusion (RRF; same platform caveat as vector search) |
+| A/B testing | Mode A (query overrides), Mode B (index rerouting), interleaving, statistics |
+| Personalization | Event scoring, user profile building, query-time `personalizationImpact` |
+| Recommendations | Related products, bought-together, trending, looking-similar |
+| AI search / RAG | Chat-style query with LLM reranking (BYO provider) |
+| Analytics | Search events, click tracking, query suggestions, HA fan-out |
+| Federated search | Weighted multi-index queries with RRF merge |
+
+Algolia-compatible REST API under `/1/` — works with InstantSearch.js v5, the algoliasearch client, and [Laravel Scout](integrations/laravel-scout/).
+
+---
+
+## Comparison
+
+|  | Flapjack | Algolia | Meilisearch | Typesense | Elasticsearch | OpenSearch |
+|--|----------|---------|-------------|-----------|---------------|-----------|
+| Self-hosted | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| License | MIT | Proprietary | MIT + BUSL-1.1 | GPL-3 | ELv2 / SSPL / AGPL | Apache 2.0 |
+| Algolia-compatible API | ✅ | — | ❌ | ❌ | ❌ | ❌ |
+| InstantSearch.js | Native | Native | Adapter | Adapter | Community | Community |
+| Built-in Algolia migration | ✅ | — | ❌ | ❌ | ❌ | ❌ |
+| Typo tolerance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Faceting (hierarchical) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Filters (numeric, string, bool, date) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Geo search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Synonyms | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Query rules (pin/hide/boost/redirect) | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Custom ranking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Analytics | ✅ | ✅ | Cloud only | ✅ | ✅ | ✅ |
+| Scoped API keys (HMAC) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| S3 backup/restore | ✅ | N/A | ❌ | ❌ | Snapshots | Snapshots |
+| Dashboard UI | ✅ | ✅ | ✅ | Cloud only | Kibana | Dashboards |
+| Embeddable as library | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| HA / clustering | 🟡 (executed with findings) | ✅ | Cloud only | ✅ | ✅ | ✅ |
+| Multi-language | 30 languages + CJK tokenization | 60+ | Many | Many | Many | Many |
+| Vector / semantic search | ✅* | ✅ | ✅ | ✅ | ✅ | ✅ |
+| AI search (RAG) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Hybrid search (keyword + vector) | ✅* | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Personalization | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Recommendations | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Federated multi-index search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| A/B testing | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
+
+* Flapjack vector and hybrid search are available in macOS pre-built binaries, Docker images, and source builds. Pre-built Linux musl (`x86_64`/`aarch64`) and Windows (`x86_64`) binaries ship without vector support. Check runtime capability with `GET /health` → `capabilities.vectorSearch`.
+
+---
+
+## Deployment
+
+```bash
+cargo build --release
+./target/release/flapjack
+```
+
+Requires stable Rust. Pre-built binaries for Linux x86_64 (static musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x86_64 are available on the [releases page](https://github.com/griddlehq/flapjack/releases/latest). Vector search is included in macOS pre-built binaries, Docker images, and source builds; pre-built Linux musl and Windows binaries ship without vector support (build from source or use Docker when vector search is required).
+
+### Single Node
+
+Listens on `127.0.0.1:7700` by default. Override with `--bind-addr` or `FLAPJACK_BIND_ADDR`.
+
+### Docker
+
+```bash
+docker build -t flapjack -f engine/Dockerfile .
+docker run -d --name flapjack \
+  -p 7700:7700 \
+  -v /tmp/fj-data:/data \
+  flapjack
+```
+
+The Dockerfile sets `FLAPJACK_BIND_ADDR=0.0.0.0:7700` so the container is host-reachable by default.
+
+#### Docker Compose Quickstart
+
+A single-node Docker Compose setup (builds from source, auth disabled) is available at [`engine/examples/quickstart/`](engine/examples/quickstart/). Use it only on a trusted local machine: it publishes port `7700` and is intended for loopback-only development, not shared networks or internet-reachable hosts. For any non-local deployment, keep auth enabled and follow the standard quickstart or deployment docs instead. Run `docker compose up -d --build` and hit `http://localhost:7700/health`.
+
+### Multi-Node Examples
+
+- HA topology (nginx-routed): [`engine/examples/ha-cluster/`](engine/examples/ha-cluster/)
+- 2-node replication + analytics fan-out: [`engine/examples/replication/`](engine/examples/replication/)
+- S3 snapshot backup/restore with MinIO: [`engine/examples/s3-snapshot/`](engine/examples/s3-snapshot/)
+
+---
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FLAPJACK_DATA_DIR` | `./data` | Index storage directory |
+| `FLAPJACK_BIND_ADDR` | `127.0.0.1:7700` | Listen address |
+| `FLAPJACK_ADMIN_KEY` | — | Admin API key (enables auth) |
+| `FLAPJACK_ENV` | `development` | `production` requires auth on all endpoints |
+| `FLAPJACK_S3_BUCKET` | — | S3 bucket for snapshots |
+| `FLAPJACK_S3_REGION` | `us-east-1` | S3 region |
+| `FLAPJACK_SNAPSHOT_INTERVAL` | `0` (disabled) | Auto-snapshot interval in integer seconds |
+| `FLAPJACK_SNAPSHOT_RETENTION` | `24` | Retention count (snapshots per index) |
+
+Data stored in `FLAPJACK_DATA_DIR`. Mount as a volume in Docker.
+Full operator defaults and env-var types are canonical in [`engine/docs2/3_IMPLEMENTATION/OPS_CONFIGURATION.md`](engine/docs2/3_IMPLEMENTATION/OPS_CONFIGURATION.md).
+
+---
+
+## Analytics Cluster Mode (Multi-node)
+
+When peers are configured, `/2/*` analytics routes merge local + peer analytics results at query time and return cluster metadata.
+This is fan-out/merge behavior, not leader election or automatic node promotion.
+
+**Behavior summary:**
+
+- Each node keeps its own local analytics writes.
+- Query fan-out/merge is handled in `maybe_fan_out` for `/2/*` endpoints.
+- `X-Flapjack-Local-Only: true` disables fan-out and returns local-only analytics.
+
+**Response shape** — every analytics response in cluster mode includes a `cluster` field:
+
+```json
+{
+  "count": 18456,
+  "cluster": {
+    "nodes_total": 3,
+    "nodes_responding": 3,
+    "partial": false,
+    "node_details": [
+      {"node_id": "node-a", "status": "Ok", "latency_ms": 1},
+      {"node_id": "node-b", "status": "Ok", "latency_ms": 12},
+      {"node_id": "node-c", "status": "Ok", "latency_ms": 14}
+    ]
+  }
+}
+```
+
+`partial: true` means one or more nodes were unreachable; the response contains data from the responding nodes only.
+
+**Users count** uses HyperLogLog (p=14, ~0.8% error) so shared users across nodes are not double-counted. All other metrics (search counts, rates, click positions, etc.) are exact sums.
+
+Verified examples:
+
+- [`engine/examples/replication/`](engine/examples/replication/) (`test_replication.sh`) proves 2-node fan-out with merged count and `cluster` metadata checks.
+- [`engine/examples/ha-cluster/`](engine/examples/ha-cluster/) (`test_ha.sh`) proves 3-node nginx-routed fan-out in that compose topology.
+
+---
+
+## API Documentation
+
+- [Online API docs](https://flapjack-demo.pages.dev/api-docs)
+- [Swagger UI](http://localhost:7700/swagger-ui/) (local)
+
+---
+
+## Use as a Library
+
+Flapjack's core can be embedded directly:
+
+```toml
+[dependencies]
+flapjack = { version = "0.1", default-features = false }
+```
+
+See [LIB.md](engine/LIB.md) for the embedding guide.
+
+---
+
+## Architecture
+
+Built on [Tantivy](https://github.com/quickwit-oss/tantivy) with a pinned fork for edge-ngram prefix search. Axum + Tokio HTTP server.
+
+```
+flapjack/              # Core library (search, indexing, query execution)
+flapjack-http/         # HTTP server (Axum handlers, routing)
+flapjack-replication/  # Cluster coordination
+flapjack-ssl/          # TLS (Let's Encrypt, ACME)
+flapjack-server/  # Binary entrypoint
+```
+
+---
+
+## Development
+
+```bash
+cargo install cargo-nextest
+cargo nextest run
+```
+
+---
+
+## Dashboard Screenshots
+
+Flapjack includes a built-in dashboard UI served at `http://localhost:7700` when the server is running.
+
+<img src="engine/dashboard/img/dash_overview.png" width="600" />
+
+<img src="engine/dashboard/img/dash_search.png" width="600" />
+
+<img src="engine/dashboard/img/dash_migrate_alg.png" width="600" />
+
+---
+
+## License
+
+ [MIT](LICENSE)

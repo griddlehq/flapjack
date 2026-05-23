@@ -1,0 +1,146 @@
+**/target/
+/.cargo
+/.cache
+**/node_modules/
+node_modules/
+.secret/
+
+**/events_v1.jsonl
+
+/.vscode
+/.env
+/.secret
+.admin_key
+/dev-data
+/data
+/tmp
+/venv
+
+# Data directories
+/datasets/
+
+# Generated/temporary JSON (specific files, not blanket *.json)
+railway.json
+sdk_test/.cache/
+**/test-results/
+benchmarks_2/results.json
+demo-dualclient/dist/openapi.json
+demo-dualclient/dist/stats.json
+demo-dualclient/public/openapi.json
+
+# Build artifacts
+/dist
+/.wrangler
+
+# PHP / Composer
+**/vendor/
+*.phpunit.result.cache
+
+# Build output (all subprojects)
+**/dist/
+
+# Lock files for dependencies
+# Keep: Cargo.lock (binary crate), dashboard + sdk_test package-lock.json
+# Ignore: other SDK/integration lock files (published libraries, not apps)
+**/package-lock.json
+!engine/dashboard/package-lock.json
+!engine/sdk_test/package-lock.json
+**/yarn.lock
+!sdks/javascript/yarn.lock
+**/Gemfile.lock
+**/poetry.lock
+!sdks/python/poetry.lock
+**/pubspec.lock
+**/composer.lock
+
+# ML model caches
+**/.fastembed_cache/
+
+# Tantivy lock files
+*.tantivy-meta.lock
+*.tantivy-writer.lock
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# matt runtime state/logs
+.matt/
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Stable server binary for dashboard dev/testing
+bin/
+
+# Per-clone local test/runtime ports and keys
+flapjack.local.conf
+
+# API key stores (hashed keys, still sensitive)
+engine/dashboard/data/keys.json
+engine/_dev/dev-data/keys.json
+engine/_dev/dev-data/keys.json.backup
+engine/_dev/dev-data/.admin_key_shown
+
+# Diagnostic output dumps
+od_diag_*.txt
+od_sqlite_diag_*.txt
+
+# Slupe workflow I/O
+slupe_input.md
+.slupe_output.md
+
+# Local/session-specific instruction files
+NESL_INSTRUCTIONS.md
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+!sdks/csharp/*.sln
+*.sw?
+
+# Node
+node_modules/
+
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Large binary/archive files
+sdks/wordpress/*.zip
+sdks/javascript/.yarn/releases/
+
+
+*.parquet
+
+.hashbrown
+
+# Tour video artifacts — stored in GitHub Releases, not in git
+# See: https://github.com/gridl-hq/flapjack/releases/tag/tour-videos
+engine/dashboard/tour/videos/*.webm
+engine/dashboard/tour/videos/*.mp4
+
+chatting/
+
+# Stage 1 internal artifact untracking guards
+**/DIRMAP.md
+**/CODE_MAP.md
+deep_dives/
+docs2/multi_instance/
+util/prompts/
+util/notes.md
+util/movedReserach.md
+util/handoff_session*
