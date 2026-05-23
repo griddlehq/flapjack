@@ -74,11 +74,11 @@ jobs:
 
       - name: Build (native)
         if: "!matrix.use_cross"
-        run: cargo build --release --target ${{ matrix.target }} --package flapjack-server ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
+        run: cargo build --release --target ${{ matrix.target }} --package flapjack-server --no-default-features ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
 
       - name: Build (cross)
         if: matrix.use_cross
-        run: cross build --release --target ${{ matrix.target }} --package flapjack-server ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
+        run: cross build --release --target ${{ matrix.target }} --package flapjack-server --no-default-features ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
