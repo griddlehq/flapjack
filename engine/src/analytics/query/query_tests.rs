@@ -1,3 +1,4 @@
+//! Stub summary for query_tests.rs.
 use super::*;
 use crate::analytics::collector::AnalyticsCollector;
 use crate::analytics::schema::{InsightEvent, SearchEvent};
@@ -357,6 +358,7 @@ async fn no_click_searches_escapes_query_ids_from_events_before_in_clause() {
         "clicked query should not be returned as no-click even with quote in query_id"
     );
 }
+/// TODO: Document aggregate_counts_by_query_id_merges_multiple_query_ids_into_same_query.
 #[test]
 fn aggregate_counts_by_query_id_merges_multiple_query_ids_into_same_query() {
     let rows = vec![
@@ -375,6 +377,7 @@ fn aggregate_counts_by_query_id_merges_multiple_query_ids_into_same_query() {
     assert_eq!(aggregated.get("boots"), Some(&5));
     assert_eq!(aggregated.get("hats"), Some(&1));
 }
+/// TODO: Document enrich_rows_with_click_metrics_adds_expected_fields.
 #[test]
 fn enrich_rows_with_click_metrics_adds_expected_fields() {
     let rows = vec![serde_json::json!({"search": "boots"})];
@@ -412,6 +415,7 @@ fn enrich_rows_with_click_metrics_adds_expected_fields() {
 // `search_events_to_batch`, then assert exact numeric results through the
 // public `AnalyticsQueryEngine` API.
 
+/// TODO: Document search_event_with_hits.
 fn search_event_with_hits(
     index: &str,
     query: &str,
@@ -443,6 +447,7 @@ fn search_event_with_hits(
     }
 }
 
+/// TODO: Document seed_known_answer_dataset.
 fn seed_known_answer_dataset(temp_dir: &TempDir) -> AnalyticsConfig {
     let config = test_analytics_config(temp_dir);
     let index = "products";
@@ -482,6 +487,7 @@ fn seed_known_answer_dataset(temp_dir: &TempDir) -> AnalyticsConfig {
     config
 }
 
+/// TODO: Document known_answer_top_searches.
 #[tokio::test]
 async fn known_answer_top_searches() {
     let temp_dir = TempDir::new().unwrap();
@@ -525,6 +531,7 @@ async fn known_answer_top_searches() {
     }
 }
 
+/// TODO: Document known_answer_search_count.
 #[tokio::test]
 async fn known_answer_search_count() {
     let temp_dir = TempDir::new().unwrap();
@@ -544,6 +551,7 @@ async fn known_answer_search_count() {
     assert_eq!(dates[0]["count"], 7);
 }
 
+/// TODO: Document known_answer_no_results_searches.
 #[tokio::test]
 async fn known_answer_no_results_searches() {
     let temp_dir = TempDir::new().unwrap();
@@ -571,6 +579,7 @@ async fn known_answer_no_results_searches() {
     }
 }
 
+/// TODO: Document known_answer_no_results_rate.
 #[tokio::test]
 async fn known_answer_no_results_rate() {
     let temp_dir = TempDir::new().unwrap();

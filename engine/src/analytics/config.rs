@@ -1,3 +1,4 @@
+//! Stub summary for config.rs.
 use std::path::PathBuf;
 
 pub const DEFAULT_ANALYTICS_RETENTION_DAYS: u32 = 90;
@@ -18,6 +19,7 @@ pub struct AnalyticsConfig {
 }
 
 impl AnalyticsConfig {
+    /// TODO: Document AnalyticsConfig.path_component.
     fn path_component(value: &str) -> String {
         let safe_literal = !value.is_empty()
             && value != "."

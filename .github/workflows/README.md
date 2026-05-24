@@ -1,6 +1,6 @@
 # Flapjack CI/CD Workflows
 
-This directory contains GitHub Actions workflows that are synced to the public `gridl-hq/flapjack` repository.
+This directory contains GitHub Actions workflows that are synced to the public `griddlehq/flapjack` repository.
 
 ## How It Works
 
@@ -9,7 +9,7 @@ This directory contains GitHub Actions workflows that are synced to the public `
    ./engine/s/test --ci
    ```
 
-2. **Public Repo (gridl-hq/flapjack)**: Tests run automatically
+2. **Public Repo (griddlehq/flapjack)**: Tests run automatically
    - On every push to `main` after `debbie sync staging` / `debbie sync prod`
    - Nightly at 2 AM UTC (comprehensive test suite)
 
@@ -29,7 +29,7 @@ Runs on every push to `main` in the public repo only.
 - Integrations (Laravel Scout, WordPress)
 
 **Repository Check:**
-All jobs check `github.repository == gridl-hq/flapjack` to ensure they only run in the public repo.
+All jobs check `github.repository == griddlehq/flapjack` to ensure they only run in the public repo.
 
 ### nightly.yml - Comprehensive Nightly Tests
 
@@ -53,7 +53,7 @@ uv run --project <path-to-debbie-project> debbie sync prod
 
 ## Required GitHub Secrets
 
-Set these in the public repo settings (`gridl-hq/flapjack`):
+Set these in the public repo settings (`griddlehq/flapjack`):
 
 - `ALGOLIA_APP_ID` - For integration tests
 - `ALGOLIA_ADMIN_KEY` - For integration tests

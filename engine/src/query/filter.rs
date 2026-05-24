@@ -1,3 +1,4 @@
+//! Stub summary for filter.rs.
 use crate::error::Result;
 use crate::index::settings::IndexSettings;
 use crate::types::Filter;
@@ -214,6 +215,7 @@ impl FilterCompiler {
         }
     }
 
+    /// TODO: Document FilterCompiler.equals_query_string_for_value.
     fn equals_query_string_for_value(
         &self,
         field: &str,
@@ -364,6 +366,7 @@ mod security_tests {
         }
     }
 
+    /// TODO: Document quoted_filter_values_escape_backslashes_and_quotes.
     #[test]
     fn quoted_filter_values_escape_backslashes_and_quotes() {
         let compiler = make_compiler();

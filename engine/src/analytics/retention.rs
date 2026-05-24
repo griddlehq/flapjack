@@ -1,3 +1,4 @@
+//! Stub summary for retention.rs.
 use std::path::Path;
 
 const PARTITION_PREFIX: &str = "date=";
@@ -12,6 +13,7 @@ pub fn cleanup_old_partitions(analytics_dir: &Path, retention_days: u32) -> Resu
     cleanup_old_partitions_at(analytics_dir, retention_days, chrono::Utc::now())
 }
 
+/// TODO: Document cleanup_old_partitions_at.
 fn cleanup_old_partitions_at(
     analytics_dir: &Path,
     retention_days: u32,
@@ -242,6 +244,7 @@ mod tests {
         assert!(partition.exists());
     }
 
+    /// TODO: Document remove_partition_if_expired_skips_malformed_or_non_partition_dirs.
     #[test]
     fn remove_partition_if_expired_skips_malformed_or_non_partition_dirs() {
         let dir = tempfile::tempdir().unwrap();
@@ -276,6 +279,7 @@ mod tests {
         assert!(non_partition.exists());
     }
 
+    /// TODO: Document cleanup_removes_old_partitions.
     #[test]
     fn cleanup_removes_old_partitions() {
         let dir = tempfile::tempdir().unwrap();
@@ -294,6 +298,7 @@ mod tests {
         assert!(!old_part.exists());
     }
 
+    /// TODO: Document cleanup_keeps_recent_partitions.
     #[test]
     fn cleanup_keeps_recent_partitions() {
         let dir = tempfile::tempdir().unwrap();
@@ -336,6 +341,7 @@ mod tests {
         assert!(!old2.exists());
     }
 
+    /// TODO: Document cleanup_traversal_removes_only_old_partitions_and_keeps_files.
     #[test]
     fn cleanup_traversal_removes_only_old_partitions_and_keeps_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -392,6 +398,7 @@ mod tests {
         assert!(non_partition_file_b.exists());
     }
 
+    /// TODO: Document cleanup_with_zero_retention_days_removes_nothing.
     #[test]
     fn cleanup_with_zero_retention_days_removes_nothing() {
         let dir = tempfile::tempdir().unwrap();

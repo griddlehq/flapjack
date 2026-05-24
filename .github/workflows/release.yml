@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 0.1.0)'
+        description: "Release version (e.g. 0.1.0)"
         required: true
 
 permissions:
@@ -28,11 +28,11 @@ jobs:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             use_cross: true
-            features: ""  # usearch/simsimd x86_64-musl cross toolchain incompatibility
+            features: "" # usearch/simsimd x86_64-musl cross toolchain incompatibility
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             use_cross: true
-            features: ""  # usearch/simsimd aarch64-musl toolchain incompatibility
+            features: "" # usearch/simsimd aarch64-musl toolchain incompatibility
           - target: x86_64-apple-darwin
             os: macos-15-intel
             use_cross: false
@@ -44,7 +44,7 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             use_cross: false
-            features: ""  # usearch POSIX bug (unum-cloud/usearch#715)
+            features: "" # usearch POSIX bug (unum-cloud/usearch#715)
 
     steps:
       - uses: actions/checkout@v4
@@ -81,7 +81,7 @@ jobs:
         run: cross build --release --target ${{ matrix.target }} --package flapjack-server --no-default-features ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
 
       - name: Package (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != "Windows"
         shell: bash
         run: |
           mkdir -p staging
@@ -92,7 +92,7 @@ jobs:
           shasum -a 256 flapjack-${{ matrix.target }}.tar.gz > flapjack-${{ matrix.target }}.tar.gz.sha256
 
       - name: Package (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == "Windows"
         shell: bash
         run: |
           mkdir -p staging
@@ -139,9 +139,40 @@ jobs:
             flapjack-*.zip
             flapjack-*.zip.sha256
 
-  docker:
-    name: Docker image
+  docker_prepare:
+    name: Docker tag source
     needs: release
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.tags.outputs.image }}
+      version_tag: ${{ steps.tags.outputs.version_tag }}
+      latest_tag: ${{ steps.tags.outputs.latest_tag }}
+      amd64_candidate_tag: ${{ steps.tags.outputs.amd64_candidate_tag }}
+      arm64_candidate_tag: ${{ steps.tags.outputs.arm64_candidate_tag }}
+      candidate_manifest_tag: ${{ steps.tags.outputs.candidate_manifest_tag }}
+    steps:
+      - name: Resolve canonical Docker tags
+        id: tags
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          image="ghcr.io/griddlehq/flapjack"
+          version_tag="${image}:${VERSION}"
+          latest_tag="${image}:latest"
+          amd64_candidate_tag="${image}:${VERSION}-linux-amd64"
+          arm64_candidate_tag="${image}:${VERSION}-linux-arm64"
+          candidate_manifest_tag="${image}:${VERSION}-candidate"
+
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "version_tag=${version_tag}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+          echo "amd64_candidate_tag=${amd64_candidate_tag}" >> "$GITHUB_OUTPUT"
+          echo "arm64_candidate_tag=${arm64_candidate_tag}" >> "$GITHUB_OUTPUT"
+          echo "candidate_manifest_tag=${candidate_manifest_tag}" >> "$GITHUB_OUTPUT"
+
+  docker_build_amd64:
+    name: Docker build linux/amd64
+    needs: docker_prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -154,20 +185,126 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ghcr.io/griddlehq/flapjack
-          tags: |
-            type=raw,value=${{ github.event.inputs.version }}
-            type=raw,value=latest
-
-      - uses: docker/build-push-action@v6
+      - name: Build and publish amd64 candidate image
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: engine/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          tags: ${{ needs.docker_prepare.outputs.amd64_candidate_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  docker_build_arm64_native:
+    name: Docker build linux/arm64 (native)
+    if: ${{ vars.ARM64_NATIVE_RUNNER != '' }}
+    needs: docker_prepare
+    runs-on: ${{ vars.ARM64_NATIVE_RUNNER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish arm64 candidate image (native runner)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: engine/Dockerfile
+          push: true
+          platforms: linux/arm64
+          tags: ${{ needs.docker_prepare.outputs.arm64_candidate_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  docker_build_arm64_qemu:
+    name: Docker build linux/arm64 (qemu fallback)
+    if: ${{ vars.ARM64_NATIVE_RUNNER == '' }}
+    needs: docker_prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish arm64 candidate image (qemu fallback)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: engine/Dockerfile
+          push: true
+          platforms: linux/arm64
+          tags: ${{ needs.docker_prepare.outputs.arm64_candidate_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  docker_manifest_verify:
+    name: Verify candidate multi-arch manifest
+    needs:
+      - docker_prepare
+      - docker_build_amd64
+      - docker_build_arm64_native
+      - docker_build_arm64_qemu
+    if: ${{ always() && needs.docker_build_amd64.result == 'success' && (needs.docker_build_arm64_native.result == 'success' || needs.docker_build_arm64_qemu.result == 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble candidate manifest from arch tags
+        run: |
+          docker buildx imagetools create \
+            -t "${{ needs.docker_prepare.outputs.candidate_manifest_tag }}" \
+            "${{ needs.docker_prepare.outputs.amd64_candidate_tag }}" \
+            "${{ needs.docker_prepare.outputs.arm64_candidate_tag }}"
+
+      - name: Verify candidate manifest includes required linux architectures
+        run: |
+          set -euo pipefail
+          inspect_output="$(docker buildx imagetools inspect "${{ needs.docker_prepare.outputs.candidate_manifest_tag }}")"
+          printf '%s\n' "$inspect_output"
+          echo "$inspect_output" | grep -q "linux/amd64"
+          echo "$inspect_output" | grep -q "linux/arm64"
+
+  docker_promote_stable:
+    name: Promote verified manifest to stable tags
+    needs:
+      - docker_prepare
+      - docker_manifest_verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish stable release tags from verified manifest
+        run: |
+          docker buildx imagetools create \
+            -t "${{ needs.docker_prepare.outputs.version_tag }}" \
+            -t "${{ needs.docker_prepare.outputs.latest_tag }}" \
+            "${{ needs.docker_prepare.outputs.candidate_manifest_tag }}"

@@ -1,3 +1,6 @@
+/**
+ * @module Stub summary for migrateHelpers.ts.
+ */
 import axios from 'axios';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -51,6 +54,9 @@ export async function postSensitiveMigrationRequest<TResponse>(
   return response.data;
 }
 
+/**
+ * TODO: Document buildMigrationRequestBody.
+ */
 export function buildMigrationRequestBody({
   appId,
   apiKey,
@@ -78,6 +84,9 @@ export function resolveEffectiveTargetIndex(sourceIndex: string, targetIndex: st
   return targetIndex || sourceIndex;
 }
 
+/**
+ * TODO: Document getMigrationErrorMessage.
+ */
 export function getMigrationErrorMessage(error: unknown): string {
   if (!error) {
     return 'Unknown error';

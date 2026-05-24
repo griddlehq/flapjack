@@ -2,7 +2,7 @@
 
 Single maintained status ledger for Flapjack. Shipped feature status, current production-readiness state, and post-launch work are owned in this document.
 
-**Last updated: 2026-04-16 (latest public lineage is fully published; exact sync proof is tracked in the canonical ledger below)**
+**Last updated: 2026-05-23 (May 22 OSS polish wave A–F landed; Lane F Stage 8 synthesis verdict `FAIL` against three named contracts — see Open-Source Launch Readiness table for details)**
 
 - **Backend API:** 197/197 complete (as of 2026-03-13). The full parity verification is retained in the dev repo's internal audit history.
 - **Dashboard UI:** 22 user-facing routes are shipped, backed by 21 lazy-loaded page components in `dashboard/src/App.tsx`, plus the `*` not-found catch-all. No scaffolded stubs remain.
@@ -14,6 +14,8 @@ Single maintained status ledger for Flapjack. Shipped feature status, current pr
 ## Public Sync Lineage Ledger (Canonical)
 
 This is the single detailed ledger for the completed Mar 31 pm1-pm6 + Apr 8 + Apr 15 publication wave.
+
+May 22 OSS polish wave status facts (lanes A-F, including Lane F FAIL gaps) are also canonical in the existing rows below and must be updated here when planning docs are trimmed.
 
 | Proof Item | Value |
 |---|---|
@@ -97,6 +99,12 @@ The original internal launch checklist is retained in the dev repo; the public o
 | Targeted cleanup follow-through | ✅ Done | apr08 | Extracted dashboard experiment normalization/results typing into `engine/dashboard/src/lib/experiment-normalization.ts` and removed a stale server cognitive-complexity suppression. Published in the completed public lineage; see [Public Sync Lineage Ledger (Canonical)](#public-sync-lineage-ledger-canonical). |
 | Analytics retention hardening + rollup foundation | ✅ Retention done / 🔶 rollup foundation only | apr07_pm_2 | Analytics retention cleanup is deterministic and still defaults to 90 days via `FLAPJACK_ANALYTICS_RETENTION_DAYS`; durable rollup design, known-answer query contracts, schema/config helpers, and `RollupManifest` foundation are merged. Rollup writer, query-planner rollup reads, and retention deletion gated by certified rollup coverage remain unimplemented. |
 | Test hygiene, SDK contract CI, and query safety audit | ✅ Done with deferrals | apr07_pm_3 | Public CI now has an SDK contract gate, dashboard/browser tests were tightened to reduce false positives, stale test-script shims were removed in favor of `engine/s/test`, and confirmed query/request crash paths now return typed/sanitized errors. The run still deferred OpenAPI snapshot follow-up verification and did not execute the separate search-HA ownership plan. |
+| OSS polish wave: lane A repo cutover | 🔶 Done with sweep gaps | may22_5pm_2 | Dev-source identity migrated to `griddlehq/flapjack`, new canonical repo created, debbie sync seeded it, v1.0.0 release run on the new repo, Cloudflare installer redirect cut over to point at `griddlehq/flapjack/main/engine/install.sh`, legacy `gridl-hq/flapjack` archived. Sweep gaps closed in `may23_fjc_139pm`: (1) `.debbie.toml` `[repos.dev].path` pointed at the Lane A worktree, (2) the prod rewrite path missed the `gridl-hq/flapjack` hyphen variant, and (3) current-state synced source still carried stale `gridl-hq/flapjack` refs. Evidence: `docs/research/oss_polish_lane_a_stage_0[5-8]_*.md`. |
+| OSS polish wave: lane B nightly CI | ✅ Done with deferred-op | may22_5pm_3 | `engine/rust-toolchain.toml` pinned to 1.95.0 and added to `.debbie.toml` `[sync].files`. Nightly workflow JS/Go/server-backed SDK jobs realigned with CI owner parity (shared server artifact, JS workspace flow, Go unit/e2e split). Stages 1–3 complete; Stages 4–5 (3 consecutive green nightly runs on `griddlehq/flapjack`) marked `@work:deferred-op` and never dispatched after cutover. |
+| OSS polish wave: lane C README polish | ✅ Done | may22_5pm_4 | 9-stage audit covering root + engine READMEs, CONTRIBUTING audit-and-extend, SECURITY disclosure-path audit, `engine/LIB.md` architecture refresh, CHANGELOG v1.0.0 fidelity, SDK README cleanup, root clutter sweep, and consolidated outbound-link gate. |
+| OSS polish wave: lane D docs + demo | ✅ Done | may22_5pm_5 | docs.flapjack.foo + flapjack-demo + apex `flapjack-website` redeployed via Cloudflare Pages. Stage 1 audit froze the docs owner; Stage 2 corrected launch-link sources in `website/index.html` + `engine/demo-dualclient`; Stage 3–4 deployed docs/demo/apex from selected owners; Stage 5 ran the sitemap-first URL audit with ≥10-URL + zero-non-2xx/3xx gate. |
+| OSS polish wave: lane E SDK release | 🔶 Done without publish | may22_5pm_6 | Stage 1 topology audit mapped JS/Python/Go canonical owners to `flapjackhq/*` (not this dev mirror) and recorded `proceed-with-doc-only` / `stop` / `stop` rather than publish from a parallel pipeline. npm `flapjack-search` remains `0.1.0-beta.1`, PyPI `flapjack-search` remains `0.1.0b1`, Go module path has no published versions. Rationale and follow-up lane sketch in `chats/suggestions/may22_evening_lane_e_did_not_publish_v1.md`. |
+| OSS polish wave: lane F e2e validation | 🔶 FAIL (2 named gaps; Stage 5 resolved) | may22_5pm_7 | 8-stage cross-platform validation evidence captured under `docs/research/may22_pm_7_lane_f_stage[1-8]_*`. Stage 8 final synthesis still fails on Stage 1 (GHCR arm64 pull contract) and Stage 6 (v1.0.0 SDK registry state across npm/PyPI/Go). Stage 5 was re-scored on 2026-05-23 via owner harness reruns: broader `SUMMARY pass=12 fail=0 skip=0` and focused `SUMMARY pass=6 fail=0 skip=0` (evidence: `docs/research/may23_pm_11_algolia_compat_broader.md`). |
 
 ---
 

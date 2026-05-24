@@ -9,11 +9,11 @@ members = [
 
 [package]
 name = "flapjack"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Full-text search engine library with typo tolerance, faceting, and Algolia-compatible conventions"
 license = "MIT"
-repository = "https://github.com/gridl-hq/flapjack"
+repository = "https://github.com/griddlehq/flapjack"
 keywords = ["search", "full-text", "tantivy", "algolia", "faceting"]
 categories = ["database", "text-processing"]
 
@@ -73,7 +73,7 @@ fastembed = { version = "5", optional = true, default-features = false, features
 tikv-jemalloc-ctl = { version = "0.6", features = ["stats"], optional = true }
 
 [patch.crates-io]
-tantivy = { git = "https://github.com/stuartcrobinson/tantivy", rev = "faf32ee6b48c19ce2dd7f8454af5fa85781694ef" }
+tantivy = { git = "https://github.com/stuartcrobinson/tantivy", branch = "nov19" }
 
 [dev-dependencies]
 assert_cmd = "2.0"

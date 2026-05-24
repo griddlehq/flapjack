@@ -1,3 +1,4 @@
+//! Stub summary for openapi.rs.
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
@@ -9,7 +10,7 @@ use utoipa::OpenApi;
         license(name = "MIT OR Apache-2.0"),
         contact(
             name = "Flapjack",
-            url = "https://github.com/gridl-hq/flapjack"
+            url = "https://github.com/griddlehq/flapjack"
         )
     ),
     servers(

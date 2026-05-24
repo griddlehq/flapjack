@@ -1,3 +1,6 @@
+//! Stub summary for mutation_parity.rs.
+use serde::Serialize;
+
 /// Deterministic inventory of the highest-risk mutation endpoints whose
 /// contract drift is costly to catch late.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,6 +31,27 @@ pub struct MutationParityCase {
     pub runtime_handler: &'static str,
     pub behavior_tests: &'static [&'static str],
     pub openapi_response_pointer: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct MutationParityExportRow {
+    pub id: &'static str,
+    pub method: &'static str,
+    pub path: &'static str,
+    pub parity_kind: &'static str,
+}
+
+pub fn exported_algolia_parity_cases() -> Vec<MutationParityExportRow> {
+    HIGH_RISK_MUTATION_PARITY_CASES
+        .iter()
+        .filter(|case| case.parity_kind == MutationParityKind::AlgoliaParity)
+        .map(|case| MutationParityExportRow {
+            id: case.id,
+            method: case.method,
+            path: case.path,
+            parity_kind: case.parity_kind.as_str(),
+        })
+        .collect()
 }
 
 pub const HIGH_RISK_MUTATION_PARITY_CASES: &[MutationParityCase] = &[
@@ -313,3 +337,40 @@ pub const HIGH_RISK_MUTATION_PARITY_CASES: &[MutationParityCase] = &[
             "/paths/~11~1indexes~1{indexName}~1{objectID}~1partial/post/responses/200/content/application~1json/schema/$ref",
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        HIGH_RISK_MUTATION_PARITY_CASES, MutationParityKind, exported_algolia_parity_cases,
+    };
+
+    /// TODO: Document exported_algolia_parity_cases_include_only_algolia_rows.
+    #[test]
+    fn exported_algolia_parity_cases_include_only_algolia_rows() {
+        let exported_rows = exported_algolia_parity_cases();
+        let expected_algolia_count = HIGH_RISK_MUTATION_PARITY_CASES
+            .iter()
+            .filter(|case| case.parity_kind == MutationParityKind::AlgoliaParity)
+            .count();
+        let extension_count = HIGH_RISK_MUTATION_PARITY_CASES
+            .iter()
+            .filter(|case| case.parity_kind == MutationParityKind::FlapjackExtension)
+            .count();
+
+        assert!(
+            extension_count > 0,
+            "fixture sanity check: test requires at least one FlapjackExtension row"
+        );
+        assert_eq!(
+            exported_rows.len(),
+            expected_algolia_count,
+            "export helper should include every Algolia parity row and no extras"
+        );
+        assert!(
+            exported_rows
+                .iter()
+                .all(|row| row.parity_kind == MutationParityKind::AlgoliaParity.as_str()),
+            "export helper should exclude FlapjackExtension rows"
+        );
+    }
+}
