@@ -313,6 +313,16 @@ jobs:
     needs:
       - docker_prepare
       - docker_manifest_verify
+    # docker_manifest_verify guards itself with `always()` so it can run when the
+    # unused arm64 lane (native OR qemu — one is always skipped) is skipped. That
+    # skipped sibling otherwise transitively propagates a skip to THIS job's
+    # implicit success() gate, silently skipping stable-tag promotion. That bug
+    # bit run 26349967086: the multi-arch candidate was built and verified, but
+    # :version/:latest were never published because this job was skipped. Mirror
+    # the explicit guard: promote whenever verification actually succeeded.
+    # (always() breaks the skip propagation; the result check keeps us from
+    # promoting an unverified manifest.)
+    if: ${{ always() && needs.docker_manifest_verify.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: docker/setup-buildx-action@v3
