@@ -125,8 +125,20 @@ jobs:
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          # Idempotent on purpose: release.yml creates the tag here, BEFORE the
+          # Docker promotion jobs run. A run that fails or stalls in the Docker
+          # phase therefore leaves v${VERSION} already published. Re-dispatching
+          # the workflow to finish that partial release must NOT abort at tag
+          # creation, or a half-published release could never be completed via a
+          # clean retry. If the tag already exists on origin, leave it in place
+          # (the release/assets are anchored to it) and continue to the Docker
+          # promotion jobs.
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${VERSION} already exists on origin; leaving it in place and continuing."
+          else
+            git tag "v${VERSION}"
+            git push origin "v${VERSION}"
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -174,6 +186,7 @@ jobs:
     name: Docker build linux/amd64
     needs: docker_prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -201,6 +214,7 @@ jobs:
     if: ${{ vars.ARM64_NATIVE_RUNNER != '' }}
     needs: docker_prepare
     runs-on: ${{ vars.ARM64_NATIVE_RUNNER }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -228,6 +242,13 @@ jobs:
     if: ${{ vars.ARM64_NATIVE_RUNNER == '' }}
     needs: docker_prepare
     runs-on: ubuntu-latest
+    # QEMU emulates the entire arm64 Rust compile and is an order of magnitude
+    # slower than a native runner; without a hard cap a stalled emulated build
+    # hangs the whole release pipeline indefinitely (it did, repeatedly). Cap it
+    # so a stuck build fails fast and surfaces instead of polling forever. Prefer
+    # the native lane: set repo var ARM64_NATIVE_RUNNER (e.g. ubuntu-24.04-arm,
+    # free on public repos) to skip this QEMU path entirely.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
