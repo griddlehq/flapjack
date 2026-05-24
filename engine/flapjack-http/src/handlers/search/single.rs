@@ -1,4 +1,3 @@
-//! Stub summary for single.rs.
 use axum::{
     extract::{Path, State},
     response::IntoResponse,
@@ -37,7 +36,6 @@ struct ExtractedRequestContext {
 }
 
 impl ExtractedRequestContext {
-    /// TODO: Document ExtractedRequestContext.from_request.
     fn from_request(request: &axum::extract::Request) -> Self {
         let secured_restrictions = request
             .extensions()

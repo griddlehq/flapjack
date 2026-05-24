@@ -1,4 +1,3 @@
-//! Stub summary for results.rs.
 use super::*;
 use flapjack::experiments::{metrics, stats};
 use std::collections::HashMap;
@@ -564,7 +563,6 @@ fn compute_interleaving_response(
     })
 }
 
-/// TODO: Document build_results_response.
 pub(super) fn build_results_response(
     experiment: &Experiment,
     metrics: Option<&metrics::ExperimentMetrics>,

@@ -79,7 +79,7 @@ section "Configuration Defaults"
 
 # Test 5: REPO default matches the environment (staging vs prod)
 # In staging CI: expect gridl-staging/flapjack
-# In prod CI: expect griddlehq/flapjack
+# In prod CI: expect flapjackhq/flapjack
 # Locally: accept either (dev repo has prod default, but staging sync rewrites it)
 if [ -n "${GITHUB_REPOSITORY:-}" ]; then
   case "$GITHUB_REPOSITORY" in
@@ -90,11 +90,11 @@ if [ -n "${GITHUB_REPOSITORY:-}" ]; then
         fail "Default REPO should be gridl-staging/flapjack in staging environment"
       fi
       ;;
-    griddlehq/flapjack)
-      if grep -q 'REPO=.*griddlehq/flapjack' "$INSTALL_SCRIPT" && ! grep -q 'gridl-staging' "$INSTALL_SCRIPT"; then
-        pass "Default REPO is griddlehq/flapjack (production environment)"
+    flapjackhq/flapjack)
+      if grep -q 'REPO=.*flapjackhq/flapjack' "$INSTALL_SCRIPT" && ! grep -q 'gridl-staging' "$INSTALL_SCRIPT"; then
+        pass "Default REPO is flapjackhq/flapjack (production environment)"
       else
-        fail "Default REPO should be griddlehq/flapjack in production environment"
+        fail "Default REPO should be flapjackhq/flapjack in production environment"
       fi
       ;;
     *)
@@ -103,10 +103,10 @@ if [ -n "${GITHUB_REPOSITORY:-}" ]; then
   esac
 else
   # Local dev: accept either repo (dev has prod default, staging sync rewrites it)
-  if grep -q 'REPO=.*griddlehq/flapjack\|gridl-staging/flapjack' "$INSTALL_SCRIPT"; then
+  if grep -q 'REPO=.*flapjackhq/flapjack\|gridl-staging/flapjack' "$INSTALL_SCRIPT"; then
     pass "Default REPO is set (local dev environment)"
   else
-    fail "Default REPO should be griddlehq/flapjack or gridl-staging/flapjack"
+    fail "Default REPO should be flapjackhq/flapjack or gridl-staging/flapjack"
   fi
 fi
 
@@ -456,7 +456,7 @@ fi
 
 # Test: install.flapjack.foo redirect target matches expected path
 install_redirect=$(curl -sI https://install.flapjack.foo 2>/dev/null | grep -i '^location:' | tr -d '\r')
-if echo "$install_redirect" | grep -Eq 'raw\.githubusercontent\.com/(griddlehq|gridlhq)/flapjack/main/engine/install\.sh'; then
+if echo "$install_redirect" | grep -Eq 'raw\.githubusercontent\.com/(flapjackhq|griddlehq|gridlhq)/flapjack/main/engine/install\.sh'; then
   pass "install.flapjack.foo redirects to canonical or legacy GitHub path"
 else
   fail "install.flapjack.foo redirect target unexpected: $install_redirect"

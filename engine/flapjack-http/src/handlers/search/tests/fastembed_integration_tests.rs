@@ -1,4 +1,3 @@
-//! Stub summary for fastembed_integration_tests.rs.
 use super::*;
 use crate::dto::HybridSearchParams;
 use flapjack::index::settings::IndexSettings;
@@ -33,7 +32,6 @@ fn fastembed_settings() -> IndexSettings {
     }
 }
 
-/// TODO: Document test_fastembed_hybrid_search_end_to_end.
 #[tokio::test]
 async fn test_fastembed_hybrid_search_end_to_end() {
     let tmp = TempDir::new().unwrap();

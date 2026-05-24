@@ -1,25 +1,27 @@
 #!/bin/bash
-# test_docker_runtime_e2e.sh — Stage 4 published-image Docker runtime e2e.
+# test_docker_runtime_e2e.sh — Published-image Docker runtime e2e.
 #
-# Validates the customer-path published image ghcr.io/griddlehq/flapjack:1.0.0
-# end to end: container start, /health value-level contract, .admin_key
-# persistence, batch ingest, task publication polling (README workflow),
-# search retrieval, and missing-Application-Id 403 auth contract.
+# Validates a published ghcr.io/flapjackhq/flapjack image end to end:
+# container start, architecture assertion, /health value-level contract,
+# .admin_key persistence, batch ingest, task publication polling (README
+# workflow), search retrieval, and missing-Application-Id 403 auth contract.
 #
-# Mirrors the shell PASS/FAIL vocabulary, BATCH_BODY fixture, and assertion
-# names from engine/tests/test_linux_e2e.sh and engine/tests/test_macos_e2e.sh.
-# Does NOT build a local image and does NOT substitute a different tag.
+# Accepts env overrides: IMAGE, PLATFORM, EXPECTED_VERSION, CONTAINER_NAME,
+# HOST_PORT. Defaults to ghcr.io/flapjackhq/flapjack:1.0.0 on linux/amd64.
 #
 # Usage:
 #   bash engine/tests/test_docker_runtime_e2e.sh
+#   IMAGE=ghcr.io/flapjackhq/flapjack:1.0.1 PLATFORM=linux/arm64 \
+#     EXPECTED_VERSION=1.0.1 bash engine/tests/test_docker_runtime_e2e.sh
 
 set -uo pipefail
 
-IMAGE="ghcr.io/griddlehq/flapjack:1.0.0"
-CONTAINER_NAME="flapjack_stage4_e2e"
-HOST_PORT="17700"
+IMAGE="${IMAGE:-ghcr.io/flapjackhq/flapjack:1.0.0}"
+CONTAINER_NAME="${CONTAINER_NAME:-flapjack_stage4_e2e}"
+HOST_PORT="${HOST_PORT:-17700}"
 BASE_URL="http://127.0.0.1:${HOST_PORT}"
-PLATFORM="linux/amd64"
+PLATFORM="${PLATFORM:-linux/amd64}"
+EXPECTED_VERSION="${EXPECTED_VERSION:-1.0.0}"
 
 TESTS_RUN=0
 TESTS_PASSED=0
@@ -65,10 +67,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf "=== Flapjack Stage 4 Docker Runtime E2E ===\n"
+printf "=== Flapjack Docker Runtime E2E ===\n"
 printf "Started: %s\n" "$(timestamp)"
 printf "Image: %s\n" "$IMAGE"
 printf "Platform: %s\n" "$PLATFORM"
+printf "Expected version: %s\n" "$EXPECTED_VERSION"
 printf "Container: %s\n" "$CONTAINER_NAME"
 printf "Host port: %s -> 7700\n\n" "$HOST_PORT"
 
@@ -120,8 +123,8 @@ printf '\n%s\n' "--- Step 2: Health check ---"
 HEALTH_OK="false"
 HEALTH_BODY=""
 for _i in $(seq 1 60); do
-  HEALTH_BODY=$(curl -sf "${BASE_URL}/health" 2>/dev/null) && HEALTH_EXIT=0 || HEALTH_EXIT=$?
-  if [ "$HEALTH_EXIT" -eq 0 ]; then
+  HEALTH_HTTP_CODE=$(curl -s -o /tmp/flapjack_health.out -w "%{http_code}" "${BASE_URL}/health" 2>/dev/null) && HEALTH_EXIT=0 || HEALTH_EXIT=$?; HEALTH_BODY=$(cat /tmp/flapjack_health.out 2>/dev/null)
+  if [ "$HEALTH_EXIT" -eq 0 ] && [ "$HEALTH_HTTP_CODE" = "200" ]; then
     HEALTH_OK="true"
     break
   fi
@@ -147,10 +150,10 @@ else
   fail "health-status-ok" '"status":"ok" in /health body' "$HEALTH_BODY"
 fi
 
-if printf '%s' "$HEALTH_BODY" | grep -q '"version":"1.0.0"'; then
-  pass "health-version-1.0.0"
+if printf '%s' "$HEALTH_BODY" | grep -q "\"version\":\"${EXPECTED_VERSION}\""; then
+  pass "health-version-match (${EXPECTED_VERSION})"
 else
-  fail "health-version-1.0.0" '"version":"1.0.0" in /health body' "$HEALTH_BODY"
+  fail "health-version-match" "\"version\":\"${EXPECTED_VERSION}\" in /health body" "$HEALTH_BODY"
 fi
 
 # README documents vector search as a Docker-runtime capability; assert the
@@ -160,6 +163,17 @@ if printf '%s' "$HEALTH_BODY" | grep -q '"vectorSearch":true'; then
   pass "health-capability-vector-search"
 else
   fail "health-capability-vector-search" '"vectorSearch":true in /health.capabilities' "$HEALTH_BODY"
+fi
+
+# ── Step 2b: Architecture assertion ──────────────────────────────────────────
+
+printf '\n%s\n' "--- Step 2b: Architecture assertion ---"
+ACTUAL_PLATFORM=$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE" 2>/dev/null) && INSPECT_EXIT=0 || INSPECT_EXIT=$?
+
+if [ "$INSPECT_EXIT" -eq 0 ] && [ "$ACTUAL_PLATFORM" = "$PLATFORM" ]; then
+  pass "image-architecture-match ($ACTUAL_PLATFORM)"
+else
+  fail "image-architecture-match" "$PLATFORM" "${ACTUAL_PLATFORM:-inspect failed (exit $INSPECT_EXIT)}"
 fi
 
 # ── Step 3: Admin key discovery via docker exec on /data/.admin_key ──────────

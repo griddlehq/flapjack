@@ -1,4 +1,3 @@
-//! Stub summary for response_helpers.rs.
 use super::{
     dto_algolia, metrics, resolve::resolve_store_and_experiment_id, AppState, Experiment,
     ExperimentArm, ExperimentConclusion, ExperimentError, ExperimentStatus, ExperimentStore,
@@ -166,6 +165,17 @@ pub struct ConcludedExperimentResponse {
 /// TODO: Document concluded_experiment_response.
 /// TODO: Document concluded_experiment_response.
 /// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
+/// TODO: Document concluded_experiment_response.
 #[allow(clippy::result_large_err)] // Response is inherently large in axum; boxing adds indirection without benefit at a single call site
 pub(super) fn concluded_experiment_response(
     experiment: Experiment,
@@ -254,7 +264,6 @@ mod tests {
     use super::*;
     use axum::body::to_bytes;
 
-    /// TODO: Document sample_experiment.
     fn sample_experiment(
         status: ExperimentStatus,
         conclusion: Option<ExperimentConclusion>,
@@ -307,7 +316,6 @@ mod tests {
         }
     }
 
-    /// TODO: Document concluded_experiment_fixture.
     fn concluded_experiment_fixture(conclusion: Option<ExperimentConclusion>) -> Experiment {
         Experiment {
             id: "exp_123".to_string(),
@@ -359,7 +367,6 @@ mod tests {
         assert_eq!(json["message"], "bad traffic split");
     }
 
-    /// TODO: Document concluded_experiment_response_keeps_required_conclusion_payload.
     #[test]
     fn concluded_experiment_response_keeps_required_conclusion_payload() {
         let response = concluded_experiment_response(sample_experiment(
@@ -382,7 +389,6 @@ mod tests {
         assert!(response.conclusion.significant);
     }
 
-    /// TODO: Document concluded_experiment_response_preserves_conclusion_payload.
     #[test]
     fn concluded_experiment_response_preserves_conclusion_payload() {
         let expected_conclusion = experiment_conclusion();

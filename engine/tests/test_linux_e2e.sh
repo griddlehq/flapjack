@@ -61,7 +61,7 @@ printf "Started: %s\n\n" "$(timestamp)"
 # ── Step 1: Install via public installer ─────────────────────────────────────
 
 printf '%s\n' "--- Step 1: Install via curl | sh ---"
-curl -fsSL https://install.flapjack.foo | FLAPJACK_REPO=griddlehq/flapjack NO_MODIFY_PATH=1 sh && INSTALL_EXIT=0 || INSTALL_EXIT=$?
+curl -fsSL https://install.flapjack.foo | FLAPJACK_REPO=flapjackhq/flapjack NO_MODIFY_PATH=1 sh && INSTALL_EXIT=0 || INSTALL_EXIT=$?
 printf "Install exit code: %d\n" "$INSTALL_EXIT"
 
 FLAPJACK_BIN="$HOME/.flapjack/bin/flapjack"

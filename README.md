@@ -3,8 +3,8 @@
 **→ [Project Roadmap](ROADMAP.md)**
 
 
-[![CI](https://github.com/griddlehq/flapjack/actions/workflows/ci.yml/badge.svg)](https://github.com/griddlehq/flapjack/actions/workflows/ci.yml)
-[![Release](https://github.com/griddlehq/flapjack/actions/workflows/release.yml/badge.svg)](https://github.com/griddlehq/flapjack/releases)
+[![CI](https://github.com/flapjackhq/flapjack/actions/workflows/ci.yml/badge.svg)](https://github.com/flapjackhq/flapjack/actions/workflows/ci.yml)
+[![Release](https://github.com/flapjackhq/flapjack/actions/workflows/release.yml/badge.svg)](https://github.com/flapjackhq/flapjack/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Drop-in replacement for [Algolia](https://algolia.com) — works with [InstantSearch.js](https://github.com/algolia/instantsearch) and the [algoliasearch](https://github.com/algolia/algoliasearch-client-javascript) client. Typo-tolerant full-text search with faceting, geo search, and custom ranking. Single static binary, runs anywhere, data stays on disk.
@@ -81,7 +81,7 @@ flapjack --data-dir ./data reset-admin-key
 <details>
 <summary>Note:</summary>
 
-Binaries: [Releases](https://github.com/griddlehq/flapjack/releases/latest).
+Binaries: [Releases](https://github.com/flapjackhq/flapjack/releases/latest).
 
 ```bash
 # Install specific version
@@ -216,7 +216,7 @@ cargo build -p flapjack-server --release
 ./target/release/flapjack
 ```
 
-Requires stable Rust. The Rust workspace lives under `engine/`. Pre-built binaries for Linux x86_64 (static musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x86_64 are available on the [releases page](https://github.com/griddlehq/flapjack/releases/latest). Vector search is included in macOS pre-built binaries, Docker images, and source builds; pre-built Linux musl and Windows binaries ship without vector support (build from source or use Docker when vector search is required).
+Requires stable Rust. The Rust workspace lives under `engine/`. Pre-built binaries for Linux x86_64 (static musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x86_64 are available on the [releases page](https://github.com/flapjackhq/flapjack/releases/latest). Vector search is included in macOS pre-built binaries, Docker images, and source builds; pre-built Linux musl and Windows binaries ship without vector support (build from source or use Docker when vector search is required).
 
 ### Single Node
 

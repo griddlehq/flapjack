@@ -1,4 +1,3 @@
-//! Stub summary for collector.rs.
 use dashmap::DashMap;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -351,7 +350,6 @@ mod tests {
         }
     }
 
-    /// TODO: Document test_event.
     fn test_event(
         timestamp_ms: i64,
         index: &str,
@@ -407,7 +405,6 @@ mod tests {
         );
     }
 
-    /// TODO: Document get_debug_events_filters_by_status_ok_and_error.
     #[test]
     fn get_debug_events_filters_by_status_ok_and_error() {
         let temp_dir = TempDir::new().expect("temp dir");
@@ -456,7 +453,6 @@ mod tests {
         assert_eq!(names, vec!["three".to_string(), "two".to_string()]);
     }
 
-    /// TODO: Document get_debug_events_returns_reverse_chronological_order.
     #[test]
     fn get_debug_events_returns_reverse_chronological_order() {
         let temp_dir = TempDir::new().expect("temp dir");

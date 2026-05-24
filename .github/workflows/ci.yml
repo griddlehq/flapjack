@@ -20,7 +20,7 @@ jobs:
     steps:
       - id: check
         run: |
-          if [ "${{ github.repository }}" = "griddlehq/flapjack" ] || [ "${{ github.repository }}" = "gridl-staging/flapjack" ]; then
+          if [ "${{ github.repository }}" = "flapjackhq/flapjack" ] || [ "${{ github.repository }}" = "gridl-staging/flapjack" ]; then
             echo "is-public-repo=true" >> $GITHUB_OUTPUT
           else
             echo "is-public-repo=false" >> $GITHUB_OUTPUT

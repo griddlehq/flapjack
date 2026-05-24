@@ -1,6 +1,3 @@
-/**
- * @module Stub summary for eventDebuggerUtils.ts.
- */
 import type { DebugEvent } from '@/hooks/useDebugEvents';
 
 export type TimeRangePreset = '15m' | '1h' | '24h' | '7d' | 'all';
@@ -60,9 +57,6 @@ export function formatTimestamp(ms: number): string {
   }
 }
 
-/**
- * TODO: Document resolveTimeRange.
- */
 export function resolveTimeRange(range: TimeRangePreset, nowMs: number): { from?: number; until?: number } {
   if (range === 'all') {
     return {};
@@ -81,9 +75,6 @@ export function resolveTimeRange(range: TimeRangePreset, nowMs: number): { from?
   };
 }
 
-/**
- * TODO: Document buildEventVolumeSeries.
- */
 export function buildEventVolumeSeries(
   events: DebugEvent[],
   fromTimestampMs?: number,

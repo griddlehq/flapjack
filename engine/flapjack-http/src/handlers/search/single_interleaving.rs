@@ -1,4 +1,3 @@
-//! Stub summary for single_interleaving.rs.
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -119,7 +118,6 @@ struct InterleavingPage<'a> {
     assignment_query_id: &'a str,
 }
 
-/// TODO: Document execute_core_search.
 pub(super) fn execute_core_search(
     context: CoreSearchContext<'_>,
 ) -> Result<(SearchResult, Option<ExperimentContext>, bool), FlapjackError> {

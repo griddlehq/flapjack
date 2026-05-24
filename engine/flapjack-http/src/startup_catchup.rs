@@ -1,4 +1,3 @@
-//! Stub summary for startup_catchup.rs.
 use crate::handlers::internal::apply_ops_to_manager;
 use crate::handlers::AppState;
 use flapjack::index::oplog::read_committed_seq;
@@ -41,7 +40,6 @@ async fn run_lenient_catchup_round(state: &AppState, log_prefix: &str, skip_reas
     }
 }
 
-/// TODO: Document run_pre_serve_catchup.
 pub async fn run_pre_serve_catchup(state: &AppState) -> Result<(), String> {
     let has_peers = state
         .replication_manager
@@ -72,7 +70,6 @@ pub async fn run_pre_serve_catchup(state: &AppState) -> Result<(), String> {
     wait_for_write_queues(state, timeout, timeout_secs, strict_bootstrap).await
 }
 
-/// TODO: Document execute_timed_catchup.
 async fn execute_timed_catchup(
     state: &AppState,
     timeout: tokio::time::Duration,
@@ -642,7 +639,6 @@ mod tests {
         // oldest retained entry — definitely not a gap.
         assert!(!retention_gap_detected(250, &response));
     }
-    /// TODO: Document retention_gap_true_even_when_ops_present.
     #[test]
     fn retention_gap_true_even_when_ops_present() {
         let dummy_op = flapjack::index::oplog::OpLogEntry {
@@ -664,7 +660,6 @@ mod tests {
         // full snapshot restore is needed.
         assert!(retention_gap_detected(150, &response));
     }
-    /// TODO: Document install_snapshot_bytes_keeps_existing_tenant_on_invalid_snapshot.
     #[tokio::test]
     async fn install_snapshot_bytes_keeps_existing_tenant_on_invalid_snapshot() {
         let tmp = TempDir::new().unwrap();
@@ -682,7 +677,6 @@ mod tests {
             "existing tenant data should remain if snapshot import fails"
         );
     }
-    /// TODO: Document install_snapshot_bytes_replaces_existing_tenant_on_valid_snapshot.
     #[tokio::test]
     async fn install_snapshot_bytes_replaces_existing_tenant_on_valid_snapshot() {
         let tmp = TempDir::new().unwrap();
@@ -709,7 +703,6 @@ mod tests {
             "restored tenant should contain snapshot content"
         );
     }
-    /// TODO: Document install_snapshot_bytes_restores_backup_before_retrying_failed_snapshot.
     #[tokio::test]
     async fn install_snapshot_bytes_restores_backup_before_retrying_failed_snapshot() {
         let tmp = TempDir::new().unwrap();
@@ -734,7 +727,6 @@ mod tests {
             "restored backup should be moved back to the active tenant path"
         );
     }
-    /// TODO: Document install_snapshot_bytes_rejects_path_traversal_tenant_id.
     #[tokio::test]
     async fn install_snapshot_bytes_rejects_path_traversal_tenant_id() {
         let tmp = TempDir::new().unwrap();

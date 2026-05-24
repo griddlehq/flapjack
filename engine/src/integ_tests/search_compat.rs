@@ -1,4 +1,3 @@
-//! Stub summary for search_compat.rs.
 use crate::index::SearchOptions;
 use crate::types::{FacetRequest, Filter, SearchResult, Sort};
 use crate::{error::Result, IndexManager};
@@ -33,6 +32,17 @@ fn legacy_search_options<'a>(
 /// compiling during API migration.
 ///
 /// This trait is test-only compatibility glue and is intentionally not used by production code.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
+/// TODO: Document SearchCompat.
 /// TODO: Document SearchCompat.
 /// TODO: Document SearchCompat.
 /// TODO: Document SearchCompat.
@@ -176,7 +186,6 @@ mod tests {
     }
 
     impl SearchCompat for RecordingCompat {
-        /// TODO: Document RecordingCompat.search_full.
         fn search_full(
             &self,
             tenant_id: &str,
@@ -204,7 +213,6 @@ mod tests {
         }
     }
 
-    /// TODO: Document legacy_search_options_maps_all_legacy_fields.
     #[test]
     fn legacy_search_options_maps_all_legacy_fields() {
         let filter = Filter::Equals {
@@ -242,7 +250,6 @@ mod tests {
         assert!(!options.sum_or_filters_scores);
     }
 
-    /// TODO: Document search_with_facets_delegates_without_distinct.
     #[test]
     fn search_with_facets_delegates_without_distinct() {
         let recorder = RecordingCompat::default();
@@ -289,7 +296,6 @@ mod tests {
         );
     }
 
-    /// TODO: Document search_with_facets_and_distinct_passes_distinct_through.
     #[test]
     fn search_with_facets_and_distinct_passes_distinct_through() {
         let recorder = RecordingCompat::default();
@@ -329,7 +335,6 @@ mod tests {
         );
     }
 
-    /// TODO: Document search_full_matches_explicit_search_options_path.
     #[tokio::test]
     async fn search_full_matches_explicit_search_options_path() {
         let temp_dir = TempDir::new().unwrap();

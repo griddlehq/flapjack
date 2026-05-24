@@ -48,7 +48,6 @@ skip() {
   printf "  \033[1;33m-\033[0m %s\n" "$1"
 }
 
-# TODO: Document extract_readme_curl_block.
 extract_readme_curl_block() {
   path="$1"
 
@@ -74,7 +73,6 @@ extract_readme_curl_block() {
   ' "$README_PATH"
 }
 
-# TODO: Document run_readme_curl.
 run_readme_curl() {
   path="$1"
 
@@ -129,7 +127,6 @@ extract_task_id() {
   printf '%s\n' "$response_body" | sed -n 's/.*"taskID":\([0-9]*\).*/\1/p' | head -1
 }
 
-# TODO: Document readme_has_api_docs_swagger_link.
 readme_has_api_docs_swagger_link() {
   target_readme="$1"
   awk '
@@ -143,7 +140,6 @@ readme_has_api_docs_swagger_link() {
   ' "$target_readme"
 }
 
-# TODO: Document wait_for_task_published.
 wait_for_task_published() {
   task_id="$1"
 

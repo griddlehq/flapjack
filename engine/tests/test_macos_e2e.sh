@@ -118,7 +118,7 @@ printf "TMP_HOME: %s\n" "$TMP_HOME"
 printf "TMP_INSTALL_ROOT: %s\n" "$TMP_INSTALL_ROOT"
 printf "TMP_DATA_ROOT: %s\n" "$TMP_DATA_ROOT"
 
-INSTALL_OUTPUT=$(curl -fsSL https://install.flapjack.foo | HOME="$TMP_HOME" FLAPJACK_INSTALL="$TMP_INSTALL_ROOT" FLAPJACK_REPO=griddlehq/flapjack NO_MODIFY_PATH=1 sh 2>&1) && INSTALL_EXIT=0 || INSTALL_EXIT=$?
+INSTALL_OUTPUT=$(curl -fsSL https://install.flapjack.foo | HOME="$TMP_HOME" FLAPJACK_INSTALL="$TMP_INSTALL_ROOT" FLAPJACK_REPO=flapjackhq/flapjack NO_MODIFY_PATH=1 sh 2>&1) && INSTALL_EXIT=0 || INSTALL_EXIT=$?
 printf "%s\n" "$INSTALL_OUTPUT"
 printf "Install exit code: %d\n" "$INSTALL_EXIT"
 

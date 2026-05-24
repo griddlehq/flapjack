@@ -1,4 +1,3 @@
-//! Stub summary for router.rs.
 use std::path::Path;
 use std::sync::Arc;
 
@@ -309,7 +308,6 @@ fn build_protected_routes(state: Arc<AppState>, data_dir: &Path) -> Router {
     ))
 }
 
-/// TODO: Document build_internal_routes.
 fn build_internal_routes(state: Arc<AppState>, auth_enabled: bool) -> Router {
     let public_routes = Router::new()
         .route(
@@ -504,7 +502,6 @@ pub(crate) fn max_body_mb_from_value(raw: Option<&str>) -> usize {
     raw.and_then(|value| value.parse().ok()).unwrap_or(100)
 }
 
-/// TODO: Document apply_middleware.
 fn apply_middleware(
     app: Router,
     state: Arc<AppState>,

@@ -15,7 +15,50 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  validate_release_version:
+    name: Validate requested release version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify requested version matches checked-in release files
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # The workflow input is reused in Cargo, changelog, git tag, and Docker
+          # tag contexts. Keep it to a literal semver-like subset that those
+          # systems all accept so metacharacters cannot weaken the validation
+          # gate or produce unsafe release identifiers.
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: version must match MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-prerelease" >&2
+            exit 1
+          fi
+
+          cargo_files=(
+            engine/Cargo.toml
+            engine/flapjack-http/Cargo.toml
+            engine/flapjack-replication/Cargo.toml
+            engine/flapjack-server/Cargo.toml
+            engine/flapjack-ssl/Cargo.toml
+          )
+
+          for cargo_file in "${cargo_files[@]}"; do
+            if ! grep -Fxq "version = \"$VERSION\"" "$cargo_file"; then
+              echo "ERROR: $cargo_file does not declare version ${VERSION}" >&2
+              exit 1
+            fi
+          done
+
+          if ! grep -Fq "## [${VERSION}] - " CHANGELOG.md; then
+            echo "ERROR: CHANGELOG.md is missing the ${VERSION} release heading" >&2
+            exit 1
+          fi
+
   build:
+    needs: validate_release_version
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     defaults:
@@ -168,7 +211,7 @@ jobs:
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
-          image="ghcr.io/griddlehq/flapjack"
+          image="ghcr.io/flapjackhq/flapjack"
           version_tag="${image}:${VERSION}"
           latest_tag="${image}:latest"
           amd64_candidate_tag="${image}:${VERSION}-linux-amd64"

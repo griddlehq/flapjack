@@ -1,4 +1,3 @@
-//! Stub summary for rules.rs.
 use axum::{
     extract::{Path, Query, State},
     Json,

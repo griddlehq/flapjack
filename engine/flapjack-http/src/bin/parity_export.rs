@@ -1,4 +1,3 @@
-//! Stub summary for parity_export.rs.
 use std::ffi::{OsStr, OsString};
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
@@ -82,7 +81,6 @@ fn write_parity_export_json(output_path: &Path) -> Result<(), ParityExportError>
     Ok(())
 }
 
-/// TODO: Document main.
 fn main() {
     let output_path = match parse_output_path() {
         Ok(path) => path,

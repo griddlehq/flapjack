@@ -24,7 +24,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/griddlehq/flapjack
+          images: ghcr.io/flapjackhq/flapjack
           tags: |
             type=sha,format=short,prefix=dev-
 

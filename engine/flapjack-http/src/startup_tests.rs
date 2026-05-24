@@ -1,4 +1,3 @@
-//! Stub summary for startup_tests.rs.
 use super::{
     acquire_data_dir_process_lock, build_log_layer_with_writer, build_tracing_subscriber,
     cors_origins_from_value, initialize_key_store, log_format_from_value, normalize_admin_key,
@@ -57,7 +56,6 @@ fn capture_log_output(action: impl FnOnce()) -> String {
     writer.output()
 }
 
-/// TODO: Document with_log_format_env.
 fn with_log_format_env<T>(value: Option<&str>, action: impl FnOnce() -> T) -> T {
     let _guard = ENV_MUTEX.lock().expect("env mutex should lock");
     let _restore = match value {
@@ -86,7 +84,6 @@ fn log_format_from_value_defaults_to_text() {
     assert_eq!(log_format_from_value(Some("xml")), LogFormat::Text);
     assert_eq!(log_format_from_value(Some("bogus")), LogFormat::Text);
 }
-/// TODO: Document flapjack_log_format_env_selects_json_layer.
 #[test]
 fn flapjack_log_format_env_selects_json_layer() {
     with_log_format_env(Some("json"), || {
@@ -108,7 +105,6 @@ fn flapjack_log_format_env_selects_json_layer() {
         assert_eq!(parsed["fields"]["message"], "env-selected json logging");
     });
 }
-/// TODO: Document flapjack_log_format_env_defaults_to_text_layer_for_invalid_values.
 #[test]
 fn flapjack_log_format_env_defaults_to_text_layer_for_invalid_values() {
     with_log_format_env(Some("bogus"), || {
@@ -195,7 +191,6 @@ fn cors_origins_from_value_ignores_trailing_commas_and_empty_segments() {
 }
 
 // --- JSON output format tests ---
-/// TODO: Document json_mode_emits_valid_json_with_expected_fields.
 #[test]
 fn json_mode_emits_valid_json_with_expected_fields() {
     let writer = TestWriter::new();
@@ -236,7 +231,6 @@ fn json_mode_emits_valid_json_with_expected_fields() {
         assert_eq!(fields["message"], "test message");
     }
 }
-/// TODO: Document json_mode_includes_span_context.
 #[test]
 fn json_mode_includes_span_context() {
     let writer = TestWriter::new();
@@ -271,7 +265,6 @@ fn json_mode_includes_span_context() {
 }
 
 // --- Text output format test ---
-/// TODO: Document text_mode_emits_human_readable_non_json_output.
 #[test]
 fn text_mode_emits_human_readable_non_json_output() {
     let writer = TestWriter::new();
@@ -301,7 +294,6 @@ fn text_mode_emits_human_readable_non_json_output() {
 }
 
 // --- request_id in JSON span context test ---
-/// TODO: Document json_mode_includes_request_id_from_span.
 #[test]
 fn json_mode_includes_request_id_from_span() {
     let writer = TestWriter::new();
@@ -361,7 +353,6 @@ fn read_admin_key_rejects_blank_files() {
     );
 }
 
-/// TODO: Document initialize_key_store_persists_env_admin_key_with_restrictive_permissions.
 #[cfg(unix)]
 #[test]
 fn initialize_key_store_persists_env_admin_key_with_restrictive_permissions() {
@@ -383,7 +374,6 @@ fn initialize_key_store_persists_env_admin_key_with_restrictive_permissions() {
     assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
 }
 
-/// TODO: Document shared_admin_key_persistence_sets_restrictive_permissions.
 #[cfg(unix)]
 #[test]
 fn shared_admin_key_persistence_sets_restrictive_permissions() {
@@ -455,7 +445,6 @@ fn startup_banner_shows_capabilities() {
 
 // --- Tracing subscriber builder tests ---
 
-/// TODO: Document build_tracing_subscriber_produces_working_dispatch.
 #[test]
 fn build_tracing_subscriber_produces_working_dispatch() {
     let _guard = ENV_MUTEX.lock().expect("env mutex");
@@ -480,7 +469,6 @@ fn build_tracing_subscriber_produces_working_dispatch() {
     );
 }
 
-/// TODO: Document build_tracing_subscriber_returns_none_guard_without_endpoint.
 #[cfg(feature = "otel")]
 #[test]
 fn build_tracing_subscriber_returns_none_guard_without_endpoint() {
@@ -498,7 +486,6 @@ fn build_tracing_subscriber_returns_none_guard_without_endpoint() {
     );
 }
 
-/// TODO: Document otel_startup_status_logs_initialized_message.
 #[cfg(feature = "otel")]
 #[test]
 fn otel_startup_status_logs_initialized_message() {
@@ -512,7 +499,6 @@ fn otel_startup_status_logs_initialized_message() {
     );
 }
 
-/// TODO: Document otel_startup_status_logs_disabled_message.
 #[cfg(feature = "otel")]
 #[test]
 fn otel_startup_status_logs_disabled_message() {

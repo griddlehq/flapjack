@@ -1,4 +1,3 @@
-//! Stub summary for server.rs.
 use std::path::Path;
 use std::sync::Arc;
 

@@ -50,6 +50,8 @@ assert_not_contains() {
 }
 
 section "Release workflow sequencing"
+assert_contains "$RELEASE_WORKFLOW" '^\s*validate_release_version:' "release.yml defines a release-version validation gate"
+assert_contains "$RELEASE_WORKFLOW" '^\s*needs:\s*validate_release_version\s*$' "build job waits for the release-version validation gate"
 assert_contains "$RELEASE_WORKFLOW" '^\s*docker_prepare:' "release.yml defines docker_prepare tag owner"
 assert_contains "$RELEASE_WORKFLOW" '^\s*docker_build_amd64:' "release.yml defines amd64 build lane"
 assert_contains "$RELEASE_WORKFLOW" '^\s*docker_build_arm64_native:' "release.yml defines arm64 native lane"
@@ -60,9 +62,30 @@ assert_contains "$RELEASE_WORKFLOW" "linux/amd64" "release.yml references linux/
 assert_contains "$RELEASE_WORKFLOW" "linux/arm64" "release.yml references linux/arm64"
 assert_contains "$RELEASE_WORKFLOW" "docker/setup-qemu-action@v3" "release.yml defines explicit qemu fallback path"
 assert_contains "$RELEASE_WORKFLOW" "docker buildx imagetools inspect" "release.yml verifies candidate manifest contents"
-assert_contains "$RELEASE_WORKFLOW" "ghcr\\.io/griddlehq/flapjack" "release.yml uses canonical image owner"
+assert_contains "$RELEASE_WORKFLOW" "ghcr\\.io/flapjackhq/flapjack" "release.yml uses canonical image owner"
+assert_contains "$RELEASE_WORKFLOW" 'engine/flapjack-http/Cargo.toml' "release.yml verifies crate manifest versions before building"
+assert_contains "$RELEASE_WORKFLOW" 'CHANGELOG\.md' "release.yml verifies changelog version before building"
+assert_contains "$RELEASE_WORKFLOW" 'grep -Fxq "version = \\"\$VERSION\\""' "release.yml uses literal Cargo manifest matching for the requested version"
+assert_contains "$RELEASE_WORKFLOW" 'grep -Fq "## \[\$\{VERSION\}\] - "' "release.yml uses literal changelog heading matching for the requested version"
+assert_contains "$RELEASE_WORKFLOW" 'version must match MAJOR\.MINOR\.PATCH or MAJOR\.MINOR\.PATCH-prerelease' "release.yml rejects unsafe release-version syntax before tagging or publishing"
 assert_contains "$RELEASE_WORKFLOW" "^\\s*if:\\s*\\$\\{\\{\\s*runner\\.os\\s*!=\\s*'Windows'\\s*\\}\\}" "unix packaging step uses valid runner.os expression syntax"
 assert_contains "$RELEASE_WORKFLOW" "^\\s*if:\\s*\\$\\{\\{\\s*runner\\.os\\s*==\\s*'Windows'\\s*\\}\\}" "windows packaging step uses valid runner.os expression syntax"
+
+section "Docker build hang protection and retry safety"
+# The qemu arm64 fallback once hung the release pipeline indefinitely because it
+# had no runtime cap. Require an explicit, generous-but-bounded timeout on it so
+# a stalled emulated build fails fast instead of stalling the whole release.
+assert_contains "$RELEASE_WORKFLOW" "^\\s*timeout-minutes: 90" "release.yml caps the qemu arm64 build runtime so a stalled emulated build cannot hang the pipeline"
+assert_contains "$RELEASE_WORKFLOW" "^\\s*timeout-minutes: 45" "release.yml caps native docker build runtime"
+# release.yml creates the git tag before Docker promotion, so a partial run
+# leaves the tag published. Re-dispatching to finish the release must not abort
+# at tag creation when the tag already exists.
+assert_contains "$RELEASE_WORKFLOW" "git ls-remote --exit-code --tags origin" "release.yml tag creation is idempotent for safe retry after a partial release"
+# One arm64 lane (native or qemu) is always skipped. GitHub transitively
+# propagates that skip to docker_promote_stable unless it has an explicit guard,
+# silently skipping stable-tag publication. Require the same always()+result
+# guard docker_manifest_verify uses so promotion survives the skipped lane.
+assert_contains "$RELEASE_WORKFLOW" "needs\\.docker_manifest_verify\\.result == 'success'" "release.yml promotes stable tags whenever manifest verification succeeded, surviving the skipped arm64 lane"
 
 section "docker.yml ownership boundaries"
 assert_not_contains "$DOCKER_WORKFLOW" '^\s*push:\s*$' "docker.yml no longer auto-publishes on push"

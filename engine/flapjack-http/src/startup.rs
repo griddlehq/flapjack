@@ -1,4 +1,3 @@
-//! Stub summary for startup.rs.
 use axum::http::HeaderValue;
 use fs2::FileExt;
 use std::fs::OpenOptions;
@@ -269,7 +268,6 @@ pub(crate) fn initialize_key_store(
     (key_store, admin_key, key_is_new)
 }
 
-/// TODO: Document resolve_admin_key.
 fn resolve_admin_key(
     server_config: &ServerConfig,
     admin_key_file: &Path,
@@ -325,7 +323,6 @@ fn load_existing_admin_key(admin_key_file: &Path, data_dir: &str) -> String {
     }
 }
 
-/// TODO: Document shell_quote_argument.
 fn shell_quote_argument(value: &str) -> String {
     let is_shell_safe = !value.is_empty()
         && value.bytes().all(|byte| {
@@ -512,7 +509,6 @@ pub(crate) fn format_capabilities_line() -> String {
     )
 }
 
-/// TODO: Document print_new_key_banner.
 fn print_new_key_banner(key: &str, url: &str, data_dir: &str) {
     use colored::Colorize;
     let reset_admin_key_command = format_reset_admin_key_command(data_dir);

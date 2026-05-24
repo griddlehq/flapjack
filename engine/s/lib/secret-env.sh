@@ -128,7 +128,6 @@ openai_fallback_allowed_for_base_url() {
   esac
 }
 
-# TODO: Document load_flapjack_runtime_env_from_secret.
 load_flapjack_runtime_env_from_secret() {
   local repo_root="$1"
   local env_file="$repo_root/engine/.secret/.env.secret"
