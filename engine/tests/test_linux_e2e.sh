@@ -41,22 +41,39 @@ SERVER_PID=""
 DATA_DIR=""
 
 cleanup() {
+  local script_exit_code=$?
   if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
   fi
   if [ -n "$DATA_DIR" ] && [ -d "$DATA_DIR" ]; then
-    rm -rf "$DATA_DIR"
+    if [ "$TESTS_FAILED" -gt 0 ] || [ "$script_exit_code" -ne 0 ]; then
+      local failure_snapshot="/tmp/flapjack_linux_e2e_failure_${$}_$(date +%s)"
+      cp -R "$DATA_DIR" "$failure_snapshot"
+      printf "INFO: preserved linux e2e data at %s\n" "$failure_snapshot"
+    else
+      rm -rf "$DATA_DIR"
+    fi
   fi
 }
 trap cleanup EXIT
 
-ADMIN_KEY="fj_e2e_test_admin_key_12345"
 BIND_ADDR="127.0.0.1:7799"
 BASE_URL="http://${BIND_ADDR}"
 
+generate_admin_key() {
+  local random_hex=""
+  random_hex="$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+  if [ -z "$random_hex" ]; then
+    printf 'ERROR: failed to generate a random admin key from /dev/urandom\n' >&2
+    exit 1
+  fi
+  printf 'fj_linux_e2e_%s\n' "$random_hex"
+}
+
 printf "=== Flapjack Linux E2E Validation ===\n"
 printf "Started: %s\n\n" "$(timestamp)"
+ADMIN_KEY="$(generate_admin_key)"
 
 # ── Step 1: Install via public installer ─────────────────────────────────────
 

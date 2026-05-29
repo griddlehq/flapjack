@@ -59,8 +59,11 @@ pub enum FlapjackError {
     #[error("ObjectID does not exist")]
     ObjectNotFound,
 
-    #[error("Write queue full (1000 operations pending)")]
+    #[error("Write queue full")]
     QueueFull,
+
+    #[error("Write acknowledgment timed out")]
+    WriteAckTimeout,
 
     #[error("IO error: {0}")]
     Io(String),
@@ -157,7 +160,8 @@ impl FlapjackError {
     // InvalidDocument, QueryParse, Json                       |      |
     // QueueFull                                               | 429  | Backpressure/rate limiting
     // Forbidden                                               | 403  | Authenticated but not authorized
-    // TooManyConcurrentWrites, MemoryPressure, IndexPaused    | 503  | Temporary service unavailability/retryable
+    // TooManyConcurrentWrites, MemoryPressure, IndexPaused,   | 503  | Temporary service unavailability/retryable
+    // WriteAckTimeout                                         |      |
     // Io, Tantivy, S3, Ssl, Acme, Config                      | 500  | Internal server/runtime dependency failure
     /// Map this error variant to the appropriate HTTP status code.
     ///
@@ -190,6 +194,7 @@ impl FlapjackError {
             FlapjackError::TaskNotFound(_) => StatusCode::NOT_FOUND,
             FlapjackError::ObjectNotFound => StatusCode::NOT_FOUND,
             FlapjackError::QueueFull => StatusCode::TOO_MANY_REQUESTS,
+            FlapjackError::WriteAckTimeout => StatusCode::SERVICE_UNAVAILABLE,
             FlapjackError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
             FlapjackError::Tantivy(_) => StatusCode::INTERNAL_SERVER_ERROR,
             FlapjackError::QueryParse(_) => StatusCode::BAD_REQUEST,
@@ -295,6 +300,14 @@ mod tests {
             }
             .status_code(),
             FlapjackError::QueueFull.status_code()
+        );
+    }
+
+    #[test]
+    fn write_ack_timeout_is_503() {
+        assert_eq!(
+            FlapjackError::WriteAckTimeout.status_code(),
+            StatusCode::SERVICE_UNAVAILABLE
         );
     }
 
@@ -477,6 +490,71 @@ mod tests {
             );
         }
 
+        /// PL-8 / ADR 0005: 429 QueueFull must signal the client to retry so
+        /// nginx-window write losses are recoverable without operator action.
+        #[test]
+        fn test_queue_full_has_retry_after() {
+            let response = FlapjackError::QueueFull.into_response();
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+            assert_eq!(
+                response
+                    .headers()
+                    .get("Retry-After")
+                    .and_then(|v| v.to_str().ok()),
+                Some("1"),
+                "QueueFull (429) response must include Retry-After: 1",
+            );
+        }
+
+        /// PL-13: 503 WriteAckTimeout is a transient durable-write signal —
+        /// the consumer did not ack commit within the deadline — and must carry
+        /// Retry-After so clients retry instead of treating it as a hard failure.
+        #[test]
+        fn test_write_ack_timeout_is_503_with_retry_after() {
+            let response = FlapjackError::WriteAckTimeout.into_response();
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(
+                response
+                    .headers()
+                    .get("Retry-After")
+                    .and_then(|v| v.to_str().ok()),
+                Some("1"),
+                "WriteAckTimeout (503) response must include Retry-After: 1"
+            );
+        }
+
+        /// PL-8 / ADR 0005: 503 TooManyConcurrentWrites is a transient
+        /// backpressure signal and must carry Retry-After so clients retry.
+        #[test]
+        fn test_too_many_concurrent_writes_has_retry_after() {
+            let response = FlapjackError::TooManyConcurrentWrites {
+                current: 41,
+                max: 40,
+            }
+            .into_response();
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(
+                response
+                    .headers()
+                    .get("Retry-After")
+                    .and_then(|v| v.to_str().ok()),
+                Some("1"),
+                "TooManyConcurrentWrites response must include Retry-After: 1",
+            );
+        }
+
+        /// Non-retryable errors must NOT advertise a Retry-After header —
+        /// otherwise clients would retry on hard 404s and amplify load.
+        #[test]
+        fn test_non_retryable_no_retry_after() {
+            let response = FlapjackError::TenantNotFound("missing".into()).into_response();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert!(
+                response.headers().get("Retry-After").is_none(),
+                "TenantNotFound (404) must not include Retry-After",
+            );
+        }
+
         /// Exhaustively verify that every `FlapjackError` variant produces an HTTP response
         /// whose status code matches `status_code()`, guarding against divergence between
         /// the status mapping and the `IntoResponse` implementation.
@@ -507,6 +585,7 @@ mod tests {
                 FlapjackError::TaskNotFound("id".into()),
                 FlapjackError::ObjectNotFound,
                 FlapjackError::QueueFull,
+                FlapjackError::WriteAckTimeout,
                 FlapjackError::Io("err".into()),
                 FlapjackError::Tantivy("err".into()),
                 FlapjackError::QueryParse("err".into()),
@@ -651,7 +730,11 @@ pub struct ErrorResponse {
 impl FlapjackError {
     /// User-facing error message. Internal errors are sanitized to avoid leaking
     /// file paths, stack traces, bucket names, or other server internals.
-    fn api_message(&self) -> String {
+    ///
+    /// Public so handlers that build augmented error bodies (e.g. a durable-write
+    /// failure that also reports the enqueued `taskID`) reuse the same sanitized
+    /// message as the default [`IntoResponse`] path instead of duplicating it.
+    pub fn api_message(&self) -> String {
         match self {
             FlapjackError::TenantNotFound(t) => format!("Index '{}' does not exist", t),
             FlapjackError::IndexAlreadyExists(t) => format!("Index '{}' already exists", t),
@@ -683,6 +766,9 @@ impl FlapjackError {
             FlapjackError::TaskNotFound(id) => format!("Task '{}' not found", id),
             FlapjackError::ObjectNotFound => "ObjectID does not exist".to_string(),
             FlapjackError::QueueFull => "Write queue full".to_string(),
+            FlapjackError::WriteAckTimeout => {
+                "Write acknowledgment timed out, retry later".to_string()
+            }
             FlapjackError::InvalidDocument(msg) => msg.clone(),
             FlapjackError::QueryParse(e) => format!("Query parse error: {}", e),
             FlapjackError::Json(e) => format!("JSON error: {}", e),
@@ -710,7 +796,12 @@ impl IntoResponse for FlapjackError {
     /// - HTTP status from [`status_code`](Self::status_code)
     /// - JSON body containing only `message` and `status` fields
     /// - `Retry-After: 5` header for `MemoryPressure` variants
-    /// - `Retry-After: 1` header for `IndexPaused` variants
+    /// - `Retry-After: 1` header for `IndexPaused`, `QueueFull`,
+    ///   `TooManyConcurrentWrites`, and `WriteAckTimeout` variants
+    ///   (PL-8 / ADR 0005: transient backpressure must invite client
+    ///   retry so writes lost during nginx upstream failover are
+    ///   recoverable; PL-13: a durable-write ack timeout is retriable
+    ///   and must never be reported as a false 200)
     ///
     /// Internal errors (`Io`, `Tantivy`, `S3`, `Ssl`, `Acme`, `Config`) are logged at
     /// error level server-side, then sanitized to a generic "Internal server error" message
@@ -744,6 +835,21 @@ impl IntoResponse for FlapjackError {
                 .insert("Retry-After", "5".parse().unwrap());
         }
         if matches!(&self, FlapjackError::IndexPaused(_)) {
+            response
+                .headers_mut()
+                .insert("Retry-After", "1".parse().unwrap());
+        }
+        if matches!(&self, FlapjackError::QueueFull) {
+            response
+                .headers_mut()
+                .insert("Retry-After", "1".parse().unwrap());
+        }
+        if matches!(&self, FlapjackError::TooManyConcurrentWrites { .. }) {
+            response
+                .headers_mut()
+                .insert("Retry-After", "1".parse().unwrap());
+        }
+        if matches!(&self, FlapjackError::WriteAckTimeout) {
             response
                 .headers_mut()
                 .insert("Retry-After", "1".parse().unwrap());

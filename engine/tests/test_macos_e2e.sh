@@ -19,9 +19,18 @@ TMP_INSTALL_ROOT=""
 TMP_DATA_ROOT=""
 CLEANUP_RAN="false"
 
-ADMIN_KEY="fj_stage3_macos_admin_key_12345"
 BIND_ADDR="127.0.0.1:7801"
 BASE_URL="http://${BIND_ADDR}"
+
+generate_admin_key() {
+  local random_hex=""
+  random_hex="$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+  if [ -z "$random_hex" ]; then
+    printf 'ERROR: failed to generate a random admin key from /dev/urandom\n' >&2
+    exit 1
+  fi
+  printf 'fj_macos_e2e_%s\n' "$random_hex"
+}
 
 timestamp() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
@@ -47,6 +56,7 @@ fail() {
 }
 
 cleanup() {
+  local script_exit_code=$?
   if [ "$CLEANUP_RAN" = "true" ]; then
     return
   fi
@@ -64,6 +74,15 @@ cleanup() {
     fi
   else
     pass "cleanup-server-pid"
+  fi
+
+  if [ "$TESTS_FAILED" -gt 0 ] || [ "$script_exit_code" -ne 0 ]; then
+    if [ -n "$TMP_DATA_ROOT" ] && [ -d "$TMP_DATA_ROOT" ]; then
+      local failure_snapshot="/tmp/flapjack_macos_e2e_failure_${$}_$(date +%s)"
+      cp -R "$TMP_DATA_ROOT" "$failure_snapshot"
+      printf "INFO: preserved macOS e2e data at %s\n" "$failure_snapshot"
+    fi
+    return
   fi
 
   for owned_path in "$TMP_HOME" "$TMP_INSTALL_ROOT" "$TMP_DATA_ROOT" "$TMP_ROOT"; do
@@ -105,6 +124,7 @@ print_summary() {
 
 printf "=== Flapjack macOS E2E Validation ===\n"
 printf "Started: %s\n\n" "$(timestamp)"
+ADMIN_KEY="$(generate_admin_key)"
 
 # Step 1: Install via isolated curl | sh path
 printf '%s\n' "--- Step 1: Install via curl | sh ---"

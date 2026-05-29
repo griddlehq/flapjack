@@ -19,7 +19,10 @@ impl Display for ParityExportError {
         match self {
             Self::Serialize(error) => write!(f, "failed to serialize parity export JSON: {error}"),
             Self::CreateParentDir(error) => {
-                write!(f, "failed to create parity export output directory: {error}")
+                write!(
+                    f,
+                    "failed to create parity export output directory: {error}"
+                )
             }
             Self::WriteTempFile(error) => {
                 write!(f, "failed to write temporary parity export file: {error}")
@@ -68,8 +71,7 @@ fn to_algolia_parity_json_rows() -> Vec<MutationParityExportRow> {
 
 fn write_parity_export_json(output_path: &Path) -> Result<(), ParityExportError> {
     let json_rows = to_algolia_parity_json_rows();
-    let payload =
-        serde_json::to_string_pretty(&json_rows).map_err(ParityExportError::Serialize)?;
+    let payload = serde_json::to_string_pretty(&json_rows).map_err(ParityExportError::Serialize)?;
 
     if let Some(parent_dir) = output_path.parent() {
         std::fs::create_dir_all(parent_dir).map_err(ParityExportError::CreateParentDir)?;
@@ -110,7 +112,7 @@ fn main() {
 mod tests {
     use super::parse_output_path_from_args;
     use super::{default_output_path, to_algolia_parity_json_rows, usage_message};
-    use flapjack_http::mutation_parity::{HIGH_RISK_MUTATION_PARITY_CASES, MutationParityKind};
+    use flapjack_http::mutation_parity::{MutationParityKind, HIGH_RISK_MUTATION_PARITY_CASES};
     use serde_json::Value;
     use std::ffi::OsString;
     use std::path::PathBuf;

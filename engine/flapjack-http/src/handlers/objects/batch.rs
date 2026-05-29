@@ -134,11 +134,13 @@ impl BatchExecutionState {
         &mut self,
         mut body: HashMap<String, serde_json::Value>,
     ) -> Result<(), FlapjackError> {
-        let object_id = body
+        let explicit_id = body
             .remove("objectID")
             .or_else(|| body.remove("id"))
-            .and_then(|value| value.as_str().map(String::from))
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            .and_then(|value| value.as_str().map(String::from));
+        // Auto-ID path mirrors `add_record_auto_id`: derive a stable content
+        // hash so client retries upsert rather than duplicate (ADR 0005).
+        let object_id = explicit_id.unwrap_or_else(|| super::auto_id_from_body(body.iter()));
         self.push_object_id(object_id.clone());
         self.pending.record_operation();
         self.pending
@@ -345,14 +347,20 @@ async fn flush_pending_batch_operations(
             .delete_documents_sync(index_name, deletes.clone())
             .await?;
         sync_delete_documents_to_standard_replicas(state, index_name, &deletes).await?;
-        let task = state.manager.add_documents(index_name, documents.clone())?;
+        let task = state
+            .manager
+            .add_documents_durable(index_name, documents.clone())
+            .await?;
         sync_add_documents_to_standard_replicas(state, index_name, &documents).await?;
-        // Adds are async — wait for write queue flush before reading oplog.
+        // Adds are durable — the write queue has committed before we read the oplog.
         trigger_replication(state, index_name, pre_seq, true);
         task.numeric_id
     } else {
         // addObject/updateObject — always upsert (Algolia replaces if objectID exists).
-        let task = state.manager.add_documents(index_name, documents.clone())?;
+        let task = state
+            .manager
+            .add_documents_durable(index_name, documents.clone())
+            .await?;
         sync_add_documents_to_standard_replicas(state, index_name, &documents).await?;
         trigger_replication(state, index_name, pre_seq, true);
         task.numeric_id

@@ -47,6 +47,48 @@ pub(super) fn check_record_size<T: serde::Serialize>(doc: &T) -> Result<(), Flap
     Ok(())
 }
 
+/// Derive a deterministic 32-character hex object ID from a document body.
+///
+/// PL-8 / ADR 0005: nginx does not retry POST writes across upstream failover,
+/// so client retries of the same body must upsert (not duplicate). Hashing the
+/// canonical body keeps that property without persisting any per-request state.
+///
+/// Callers must remove the client-supplied `objectID` / `id` fields before
+/// invoking this helper — both the single-record and batch auto-ID paths
+/// already do so, and including them would tie the hash to fields that this
+/// helper is explicitly replacing.
+///
+/// Canonical form: copy entries into a `BTreeMap` so iteration is sorted by
+/// key, serialize via `serde_json::to_vec`, then take the SHA-256 digest and
+/// keep the first 32 hex characters (matching UUID length).
+pub(crate) fn auto_id_from_body<'a, I, V>(entries: I) -> String
+where
+    I: IntoIterator<Item = (&'a String, V)>,
+    V: serde::Serialize + 'a,
+{
+    use sha2::{Digest, Sha256};
+    use std::collections::BTreeMap;
+
+    let canonical: BTreeMap<&str, serde_json::Value> = entries
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k.as_str(),
+                serde_json::to_value(v).unwrap_or(serde_json::Value::Null),
+            )
+        })
+        .collect();
+    let bytes = serde_json::to_vec(&canonical).unwrap_or_default();
+    let digest = Sha256::digest(&bytes);
+    let mut hex = String::with_capacity(64);
+    for byte in digest.iter() {
+        use std::fmt::Write;
+        let _ = write!(&mut hex, "{:02x}", byte);
+    }
+    hex.truncate(32);
+    hex
+}
+
 /// Apply a built-in partial update operation (Increment, Decrement, Add, Remove, AddUnique).
 /// Returns the new FieldValue for the field, or None if the operation is invalid.
 fn apply_operation(
@@ -241,26 +283,129 @@ pub(super) fn merge_partial_update(
 pub async fn add_documents(
     State(state): State<Arc<AppState>>,
     Path(index_name): Path<String>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<serde_json::Value>,
-) -> Result<Json<AddDocumentsResponse>, FlapjackError> {
-    check_not_paused(&state.paused_indexes, &index_name)?;
+) -> Result<axum::response::Response, FlapjackError> {
+    use crate::idempotency::{IdempotencyRecord, IDEMPOTENCY_HEADER};
+    use axum::response::IntoResponse;
+
+    let idem_key = headers
+        .get(IDEMPOTENCY_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    if let Some(ref key) = idem_key {
+        if let Some(record) = state.idempotency_cache.lookup(key) {
+            return Ok(record.into_response());
+        }
+    }
+
+    // Render write errors into the response rather than propagating them as `Err`.
+    // With durable adds, run_add_documents now awaits the Tantivy commit, so a commit
+    // failure (5xx) or ack timeout (503) must surface as a real error status — never a
+    // false 200. The status is identical whether axum converts an `Err` or we return
+    // the rendered response here; returning it directly also lets callers that invoke
+    // the handler outside the router observe the mapped status (PL-13 contract).
+    let response = match run_add_documents(&state, &index_name, req).await {
+        Ok(response) => response,
+        Err(err) => return Ok(err.into_response()),
+    };
+
+    if let Some(key) = idem_key {
+        if let Ok(body_bytes) = serde_json::to_vec(&response) {
+            state.idempotency_cache.store(
+                key,
+                IdempotencyRecord::json(axum::http::StatusCode::OK, body_bytes.into()),
+            );
+        }
+    }
+
+    Ok(Json(response).into_response())
+}
+
+/// Failure outcome of the add-documents pipeline.
+///
+/// Distinguishes a request rejected before it was ever enqueued (no task exists)
+/// from a write that was accepted into the queue but failed to commit durably. The
+/// latter carries the enqueued `taskID` so the error response still reports it —
+/// preserving the Algolia write-response contract (every accepted write has a
+/// `taskID`) even when the durable commit fails or times out (PL-13 ack-on-durable).
+enum AddDocumentsError {
+    /// Rejected before enqueue (validation, pause, parse, backpressure). No task id.
+    Rejected(FlapjackError),
+    /// Enqueued but the durable commit failed or timed out; reports the `taskID`.
+    DurableCommitFailed { task_id: i64, source: FlapjackError },
+}
+
+impl From<FlapjackError> for AddDocumentsError {
+    fn from(err: FlapjackError) -> Self {
+        AddDocumentsError::Rejected(err)
+    }
+}
+
+impl axum::response::IntoResponse for AddDocumentsError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            AddDocumentsError::Rejected(err) => err.into_response(),
+            AddDocumentsError::DurableCommitFailed { task_id, source } => {
+                let status = source.status_code();
+                let mut response = (
+                    status,
+                    Json(serde_json::json!({
+                        "taskID": task_id,
+                        "message": source.api_message(),
+                        "status": status.as_u16(),
+                    })),
+                )
+                    .into_response();
+                // Mirror the retriable-backpressure signal the default FlapjackError
+                // path attaches so clients retry an ack timeout rather than treating
+                // it as terminal. A commit failure (5xx) is not retriable, so only the
+                // timeout variant gets Retry-After.
+                if matches!(source, FlapjackError::WriteAckTimeout) {
+                    response
+                        .headers_mut()
+                        .insert("Retry-After", "1".parse().unwrap());
+                }
+                response
+            }
+        }
+    }
+}
+
+async fn run_add_documents(
+    state: &Arc<AppState>,
+    index_name: &str,
+    req: serde_json::Value,
+) -> Result<AddDocumentsResponse, AddDocumentsError> {
+    check_not_paused(&state.paused_indexes, index_name)?;
     if index_name != "*" {
-        reject_writes_to_virtual_replica(&state, &index_name)?;
+        reject_writes_to_virtual_replica(state, index_name)?;
     }
     if let Ok(batch_req) = serde_json::from_value::<AddDocumentsRequest>(req.clone()) {
         if index_name == "*" {
-            return batch::add_documents_multi_index_impl(State(state), batch_req).await;
+            return batch::add_documents_multi_index_impl(State(state.clone()), batch_req)
+                .await
+                .map(|json| json.0)
+                .map_err(AddDocumentsError::from);
         }
 
         if let AddDocumentsRequest::Batch { requests } = &batch_req {
             if requests.iter().any(|op| op.index_name.is_some()) {
                 return Err(FlapjackError::InvalidQuery(
                     "The indexName attribute is only allowed on multiple indexes".to_string(),
-                ));
+                )
+                .into());
             }
         }
 
-        return batch::add_documents_batch_impl(State(state), index_name, batch_req).await;
+        return batch::add_documents_batch_impl(
+            State(state.clone()),
+            index_name.to_string(),
+            batch_req,
+        )
+        .await
+        .map(|json| json.0)
+        .map_err(AddDocumentsError::from);
     }
 
     let mut doc_map = req
@@ -302,15 +447,24 @@ pub async fn add_documents(
         id: id.clone(),
         fields,
     };
+    // Enqueue, then wait for the durable commit while still holding the task so a
+    // commit failure can report the taskID (PL-13). QueueFull surfaces as a 429 with
+    // no task id, matching the pre-enqueue backpressure contract.
     let task = state
         .manager
-        .add_documents(&index_name, vec![document.clone()])?;
-    sync_add_documents_to_standard_replicas(&state, &index_name, &[document]).await?;
+        .add_documents(index_name, vec![document.clone()])?;
+    if let Err(source) = state.manager.wait_for_write_durable(&task.id).await {
+        return Err(AddDocumentsError::DurableCommitFailed {
+            task_id: task.numeric_id,
+            source,
+        });
+    }
+    sync_add_documents_to_standard_replicas(state, index_name, &[document]).await?;
 
-    Ok(Json(AddDocumentsResponse::Algolia {
+    Ok(AddDocumentsResponse::Algolia {
         task_id: task.numeric_id,
         object_ids: vec![id],
-    }))
+    })
 }
 
 /// Get a single object by ID
@@ -665,17 +819,33 @@ pub async fn delete_by_query(
 pub async fn add_record_auto_id(
     State(state): State<Arc<AppState>>,
     Path(index_name): Path<String>,
+    headers: axum::http::HeaderMap,
     Json(mut body): Json<serde_json::Map<String, serde_json::Value>>,
-) -> Result<(axum::http::StatusCode, Json<SaveObjectResponse>), FlapjackError> {
+) -> Result<axum::response::Response, FlapjackError> {
+    use crate::idempotency::{IdempotencyRecord, IDEMPOTENCY_HEADER};
+    use axum::response::IntoResponse;
+
+    let idem_key = headers
+        .get(IDEMPOTENCY_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+
+    if let Some(ref key) = idem_key {
+        if let Some(record) = state.idempotency_cache.lookup(key) {
+            return Ok(record.into_response());
+        }
+    }
+
     check_not_paused(&state.paused_indexes, &index_name)?;
     reject_writes_to_virtual_replica(&state, &index_name)?;
     state.manager.create_tenant(&index_name)?;
     check_record_size(&body)?;
 
-    let generated_id = uuid::Uuid::new_v4().to_string();
-
     body.remove("objectID");
     body.remove("id");
+
+    // Content-hash auto-ID: same body → same ID → client retry is a safe upsert.
+    let generated_id = auto_id_from_body(body.iter());
 
     let mut json_obj = serde_json::Map::new();
     json_obj.insert(
@@ -694,7 +864,8 @@ pub async fn add_record_auto_id(
         .unwrap_or(0);
     let task = state
         .manager
-        .add_documents(&index_name, vec![document.clone()])?;
+        .add_documents_durable(&index_name, vec![document.clone()])
+        .await?;
     sync_add_documents_to_standard_replicas(&state, &index_name, &[document]).await?;
     batch::trigger_replication(&state, &index_name, pre_seq, true);
 
@@ -706,14 +877,21 @@ pub async fn add_record_auto_id(
         .documents_indexed_total
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    Ok((
-        axum::http::StatusCode::CREATED,
-        Json(SaveObjectResponse {
-            task_id: task.numeric_id,
-            object_id: generated_id,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        }),
-    ))
+    let payload = SaveObjectResponse {
+        task_id: task.numeric_id,
+        object_id: generated_id,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let status = axum::http::StatusCode::CREATED;
+
+    if let Some(key) = idem_key {
+        let body_bytes = serde_json::to_vec(&payload).unwrap_or_default();
+        state
+            .idempotency_cache
+            .store(key, IdempotencyRecord::json(status, body_bytes.into()));
+    }
+
+    Ok((status, Json(payload)).into_response())
 }
 
 /// Partially update a record in the specified index by merging fields.

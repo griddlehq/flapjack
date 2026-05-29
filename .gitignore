@@ -144,3 +144,12 @@ util/prompts/
 util/notes.md
 util/movedReserach.md
 util/handoff_session*
+
+# Local validation cache artifacts
+validation_cache.jsonl
+validation_summary.md
+
+# scrai incremental scan caches — derived from source code; nothing outside scrai reads them
+.scrai/state.json
+.scrai/summaries.json
+.scrai/dir_summaries.json

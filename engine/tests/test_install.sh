@@ -124,20 +124,26 @@ else
   fail "Default install dir not found"
 fi
 
-# Test 8: Legacy prod token is retained for rewrite compatibility
-if grep -q 'github_legacy = "gridlhq/flapjack"' "$DEBBIE_CONFIG"; then
-  pass "Legacy prod token retained under identity.prod.github_legacy"
-else
-  fail "Missing identity.prod.github_legacy legacy token for rewrite compatibility"
-fi
+# Tests 8-9 verify private-repo debbie sync surface; they only run in the dev
+# mirror where .debbie.toml lives. The public mirror intentionally does not
+# carry .debbie.toml, so skip these assertions when the file is absent rather
+# than coupling public install-behavior tests to private sync config.
+if [ -f "$DEBBIE_CONFIG" ]; then
+  # Test 8: Legacy prod token is retained for rewrite compatibility
+  if grep -q 'github_legacy = "gridlhq/flapjack"' "$DEBBIE_CONFIG"; then
+    pass "Legacy prod token retained under identity.prod.github_legacy"
+  else
+    fail "Missing identity.prod.github_legacy legacy token for rewrite compatibility"
+  fi
 
-# Test 9: Rewrite scope remains single-source for install/workflow identity rewrites
-if grep -q '"engine/install.sh"' "$DEBBIE_CONFIG" \
-  && grep -q '".github/workflows/docker.yml"' "$DEBBIE_CONFIG" \
-  && grep -q '".github/workflows/release.yml"' "$DEBBIE_CONFIG"; then
-  pass "Rewrite scope includes install/workflow identity-owned files"
-else
-  fail "Rewrite scope missing install/workflow identity-owned files"
+  # Test 9: Rewrite scope remains single-source for install/workflow identity rewrites
+  if grep -q '"engine/install.sh"' "$DEBBIE_CONFIG" \
+    && grep -q '".github/workflows/docker.yml"' "$DEBBIE_CONFIG" \
+    && grep -q '".github/workflows/release.yml"' "$DEBBIE_CONFIG"; then
+    pass "Rewrite scope includes install/workflow identity-owned files"
+  else
+    fail "Rewrite scope missing install/workflow identity-owned files"
+  fi
 fi
 
 # ── Platform Detection ───────────────────────────────────────────────────────
@@ -237,6 +243,20 @@ if grep -q 'application/octet-stream' "$INSTALL_SCRIPT"; then
   pass "GitHub API asset download (Accept: application/octet-stream)"
 else
   fail "GitHub API asset download not implemented"
+fi
+
+# Test 21b: Missing checksum file fails closed
+if grep -q 'No checksum file available' "$INSTALL_SCRIPT" && grep -q 'refusing unverifiable install' "$INSTALL_SCRIPT"; then
+  pass "Missing checksum file is a hard failure"
+else
+  fail "Missing checksum file does not fail closed"
+fi
+
+# Test 21c: Missing checksum tool fails closed
+if grep -q 'No checksum tool found' "$INSTALL_SCRIPT" && grep -q 'refusing unverifiable install' "$INSTALL_SCRIPT"; then
+  pass "Missing checksum tool is a hard failure"
+else
+  fail "Missing checksum tool does not fail closed"
 fi
 
 # ── PATH Management ──────────────────────────────────────────────────────────
@@ -605,60 +625,45 @@ else
     fail "Quickstart: failed to install binary" "$qs_install_output"
   fi
 
-  # Start server on non-default port with isolated data dir
-  # Use both env var and CLI flag for no-auth (env var works across all versions)
-  QS_ADMIN_KEY="fj_testinstallerkey00000"
+  # Mirror the documented quickstart UX (README §Quickstart):
+  #   1. Start the binary with no auth env vars.
+  #   2. On first boot, server auto-generates an admin key at data/.admin_key.
+  #   3. Read that key and pass it as X-Algolia-API-Key in all /1/* calls.
+  # No --no-auth, no FLAPJACK_ADMIN_KEY override — exercises the same path a
+  # first-time user follows.
   if [ -x "$qs_dir/bin/flapjack" ]; then
-    FLAPJACK_NO_AUTH=1 FLAPJACK_BIND_ADDR="127.0.0.1:${QS_PORT}" FLAPJACK_DATA_DIR="$qs_data" \
-      "$qs_dir/bin/flapjack" --no-auth >/dev/null 2>&1 &
+    FLAPJACK_BIND_ADDR="127.0.0.1:${QS_PORT}" FLAPJACK_DATA_DIR="$qs_data" \
+      "$qs_dir/bin/flapjack" >/dev/null 2>&1 &
     QS_SERVER_PID=$!
 
-    # Wait for server readiness (use /health which doesn't require auth)
+    # Wait for both the server to respond AND the auto-generated .admin_key
+    # to land on disk (the key is written during initialize_key_store, before
+    # /health serves, but assert both to be defensive against startup ordering
+    # changes in future binaries).
     qs_ready=false
     for _i in $(seq 1 30); do
-      if curl -sf "http://localhost:${QS_PORT}/health" >/dev/null 2>&1; then
+      if curl -sf "http://localhost:${QS_PORT}/health" >/dev/null 2>&1 \
+        && [ -s "$qs_data/.admin_key" ]; then
         qs_ready=true
         break
       fi
       sleep 0.5
     done
 
-    # If health check didn't work, try with auth key (server may not support --no-auth)
-    if [ "$qs_ready" = "false" ]; then
-      # Kill the first attempt
-      if kill -0 "$QS_SERVER_PID" 2>/dev/null; then
-        kill "$QS_SERVER_PID" 2>/dev/null || true
-        wait "$QS_SERVER_PID" 2>/dev/null || true
-      fi
-      # Restart with admin key
-      FLAPJACK_ADMIN_KEY="$QS_ADMIN_KEY" FLAPJACK_BIND_ADDR="127.0.0.1:${QS_PORT}" FLAPJACK_DATA_DIR="$qs_data" \
-        "$qs_dir/bin/flapjack" >/dev/null 2>&1 &
-      QS_SERVER_PID=$!
-      QS_AUTH_MODE="key"
-      for _i in $(seq 1 30); do
-        if curl -sf "http://localhost:${QS_PORT}/health" >/dev/null 2>&1; then
-          qs_ready=true
-          break
-        fi
-        sleep 0.5
-      done
-    else
-      QS_AUTH_MODE="noauth"
-    fi
-
     if [ "$qs_ready" = "true" ]; then
-      pass "Install test: server started on port ${QS_PORT} (mode: ${QS_AUTH_MODE})"
+      pass "Install test: server started on port ${QS_PORT} (auto-generated admin key)"
     else
-      fail "Install test: server failed to start within 15s"
+      fail "Install test: server failed to start within 15s or did not write data/.admin_key"
     fi
 
-    # Always use the real /1/ API endpoints
-    QS_BASE="http://localhost:${QS_PORT}/1/indexes"
-    if [ "$QS_AUTH_MODE" = "key" ]; then
-      QS_AUTH="-H X-Algolia-API-Key:${QS_ADMIN_KEY} -H X-Algolia-Application-Id:test"
-    else
-      QS_AUTH=""
+    # Read the auto-generated key and assemble auth headers per the documented
+    # Algolia-compatible header pair.
+    QS_ADMIN_KEY=""
+    if [ -s "$qs_data/.admin_key" ]; then
+      QS_ADMIN_KEY=$(cat "$qs_data/.admin_key")
     fi
+    QS_BASE="http://localhost:${QS_PORT}/1/indexes"
+    QS_AUTH="-H X-Algolia-API-Key:${QS_ADMIN_KEY} -H X-Algolia-Application-Id:flapjack"
 
     if [ "$qs_ready" = "true" ]; then
       # POST documents via /1/ batch endpoint

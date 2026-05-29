@@ -194,7 +194,7 @@ Algolia-compatible REST API under `/1/` — works with InstantSearch.js v5, the 
 | S3 backup/restore | ✅ | N/A | ❌ | ❌ | Snapshots | Snapshots |
 | Dashboard UI | ✅ | ✅ | ✅ | Cloud only | Kibana | Dashboards |
 | Embeddable as library | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| HA / clustering | 🟡 (executed with findings) | ✅ | Cloud only | ✅ | ✅ | ✅ |
+| HA / clustering | 🟡 (bounded convergence)† | ✅ | Cloud only | ✅ | ✅ | ✅ |
 | Multi-language | 30 languages + CJK tokenization | 60+ | Many | Many | Many | Many |
 | Vector / semantic search | ✅* | ✅ | ✅ | ✅ | ✅ | ✅ |
 | AI search (RAG) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -205,6 +205,8 @@ Algolia-compatible REST API under `/1/` — works with InstantSearch.js v5, the 
 | A/B testing | ✅ | ✅ | ❌ | ❌ | ❌ | Partial |
 
 * Flapjack vector and hybrid search are available in macOS pre-built binaries, Docker images, and source builds. Pre-built Linux musl (`x86_64`/`aarch64`) and Windows (`x86_64`) binaries ship without vector support. Check runtime capability with `GET /health` → `capabilities.vectorSearch`.
+
+† HA / clustering replication converges to a bounded steady-state spread (a small residual count difference) rather than exact per-node equality under sustained rolling restarts; the residual reflects nginx restart-window write loss and is tracked as roadmap **PL-8**. Canonical evidence and interpretation: [`engine/loadtest/BENCHMARKS.md`](engine/loadtest/BENCHMARKS.md) (HA Soak Proof).
 
 ---
 

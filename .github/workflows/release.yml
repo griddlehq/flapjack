@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -249,6 +250,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ needs.docker_prepare.outputs.amd64_candidate_tag }}
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -277,6 +280,8 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: ${{ needs.docker_prepare.outputs.arm64_candidate_tag }}
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -315,6 +320,8 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: ${{ needs.docker_prepare.outputs.arm64_candidate_tag }}
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

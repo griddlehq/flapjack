@@ -55,6 +55,7 @@ TMP_DATA_DIR=""
 CONTAINER_STARTED="false"
 
 cleanup() {
+  local script_exit_code=$?
   # Best-effort container teardown. The container was started with --rm so a
   # stop/kill is sufficient to remove it.
   if [ "$CONTAINER_STARTED" = "true" ]; then
@@ -62,7 +63,13 @@ cleanup() {
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
   if [ -n "$TMP_DATA_DIR" ] && [ -d "$TMP_DATA_DIR" ]; then
-    rm -rf "$TMP_DATA_DIR" 2>/dev/null || true
+    if [ "$TESTS_FAILED" -gt 0 ] || [ "$script_exit_code" -ne 0 ]; then
+      local failure_snapshot="/tmp/flapjack_docker_runtime_e2e_failure_${$}_$(date +%s)"
+      cp -R "$TMP_DATA_DIR" "$failure_snapshot" 2>/dev/null || true
+      printf "INFO: preserving docker e2e host data dir for triage: %s\n" "$TMP_DATA_DIR"
+    else
+      rm -rf "$TMP_DATA_DIR" 2>/dev/null || true
+    fi
   fi
 }
 trap cleanup EXIT

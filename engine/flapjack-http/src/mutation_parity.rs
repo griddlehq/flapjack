@@ -340,7 +340,7 @@ pub const HIGH_RISK_MUTATION_PARITY_CASES: &[MutationParityCase] = &[
 #[cfg(test)]
 mod tests {
     use super::{
-        HIGH_RISK_MUTATION_PARITY_CASES, MutationParityKind, exported_algolia_parity_cases,
+        exported_algolia_parity_cases, MutationParityKind, HIGH_RISK_MUTATION_PARITY_CASES,
     };
 
     #[test]
