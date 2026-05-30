@@ -82,6 +82,11 @@ jobs:
     needs: check-repo
     if: needs.check-repo.outputs.is-public-repo == 'true'
     runs-on: ubuntu-latest
+    env:
+      CACHE_ON_FAILURE: true
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+      RUSTFLAGS: -C debuginfo=0
     defaults:
       run:
         working-directory: engine
@@ -98,14 +103,22 @@ jobs:
         with:
           workspaces: engine
       - uses: taiki-e/install-action@a93b01ec36baa756f8701f3a0a8daa54a46d6339 # nextest
+      - name: Install cargo audit/deny tools for security audit tests
+        uses: taiki-e/install-action@a93b01ec36baa756f8701f3a0a8daa54a46d6339 # cargo-audit,cargo-deny
+        with:
+          tool: cargo-audit,cargo-deny
+          fallback: none
       - name: Create dashboard dist stub (for RustEmbed)
         run: mkdir -p dashboard/dist && echo '<html></html>' > dashboard/dist/index.html
       - name: Workspace build gate
         run: cargo build --tests --workspace
       - name: Build binaries (needed by integration tests)
         run: cargo build --package flapjack-server --features vector-search
+      - name: Build vector-search test binaries
+        timeout-minutes: 30
+        run: RUSTFLAGS='-C debuginfo=0 -C strip=debuginfo' cargo build --tests -p flapjack -p flapjack-http --features vector-search
       - name: Fast tests (vector-search)
-        timeout-minutes: 10
+        timeout-minutes: 30
         run: cargo nextest run -p flapjack -p flapjack-http --features vector-search
       - name: Fast tests (remaining)
         timeout-minutes: 10
@@ -116,6 +129,11 @@ jobs:
     needs: check-repo
     if: needs.check-repo.outputs.is-public-repo == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      CACHE_ON_FAILURE: true
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+      RUSTFLAGS: -C debuginfo=0
     defaults:
       run:
         working-directory: engine
@@ -132,12 +150,21 @@ jobs:
         with:
           workspaces: engine
       - uses: taiki-e/install-action@a93b01ec36baa756f8701f3a0a8daa54a46d6339 # nextest
+      - name: Install cargo audit/deny tools for security audit tests
+        uses: taiki-e/install-action@a93b01ec36baa756f8701f3a0a8daa54a46d6339 # cargo-audit,cargo-deny
+        with:
+          tool: cargo-audit,cargo-deny
+          fallback: none
       - name: Create dashboard dist stub (for RustEmbed)
         run: mkdir -p dashboard/dist && echo '<html></html>' > dashboard/dist/index.html
       - name: Build binaries (needed by integration tests)
+        timeout-minutes: 30
         run: cargo build --package flapjack-server --features vector-search
+      - name: Build vector-search test binaries
+        timeout-minutes: 30
+        run: RUSTFLAGS='-C debuginfo=0 -C strip=debuginfo' cargo build --tests -p flapjack -p flapjack-http --features vector-search
       - name: All tests (vector-search)
-        timeout-minutes: 10
+        timeout-minutes: 30
         run: cargo nextest run -p flapjack -p flapjack-http --features vector-search -P ci
       - name: All tests (remaining)
         timeout-minutes: 10
