@@ -74,7 +74,7 @@ jobs:
       - name: Build binaries
         run: cargo build --package flapjack-server
       - name: Run all tests
-        timeout-minutes: 10
+        timeout-minutes: 45
         run: cargo nextest run -P ci
 
   installer-all:
